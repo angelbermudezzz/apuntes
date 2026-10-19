@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Apuntes de Erika</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<style>
+/* Layout: una columna tipo cuaderno; pestañas de asignaturas arriba, lista de apuntes, y el apunte abierto debajo (dos columnas en pantallas anchas). */
+:root {
+  --paper: #f6f8fb;
+  --sheet: #ffffff;
+  --ink: #1d2a44;
+  --ink-soft: #5a6684;
+  --line: #dbe1ec;
+  --accent: #2b4fd8;
+  --accent-ink: #ffffff;
+  --marker: #ffe45c;
+  --danger: #c2352b;
+  --ok: #1d7f4e;
+  --ok-bg: #e3f5ea;
+  --bad-bg: #fbe6e4;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --r: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #11161f; --sheet: #19202c; --ink: #e7ebf3; --ink-soft: #9aa6bf; --line: #2b3445;
+    --accent: #7d97ff; --accent-ink: #0d1324; --marker: #8a7a1c; --danger: #ff8a7f;
+    --ok: #6fd6a0; --ok-bg: #173527; --bad-bg: #3d1f1d; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #11161f; --sheet: #19202c; --ink: #e7ebf3; --ink-soft: #9aa6bf; --line: #2b3445;
+  --accent: #7d97ff; --accent-ink: #0d1324; --marker: #8a7a1c; --danger: #ff8a7f;
+  --ok: #6fd6a0; --ok-bg: #173527; --bad-bg: #3d1f1d; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1100px; margin: 0 auto; display: grid; gap: 20px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); font-weight: 700; letter-spacing: -0.01em; }
+h1 mark { background: linear-gradient(transparent 55%, var(--marker) 55%); color: inherit; padding: 0 .1em; }
+h2 { font-size: 1.25rem; font-weight: 700; }
+.sub { color: var(--ink-soft); margin: 4px 0 0; }
+a { color: var(--accent); }
+header { display: flex; gap: 12px; justify-content: space-between; align-items: start; flex-wrap: wrap; }
+header > div { min-width: 0; flex: 1 1 260px; }
+button, .btn { font: inherit; cursor: pointer; border-radius: 999px; border: 1px solid var(--line); background: var(--sheet); color: var(--ink); padding: 8px 16px; min-height: 40px; }
+button:focus-visible, input:focus-visible, select:focus-visible, label.drop:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.ghost { background: transparent; }
+.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+.keydot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--danger); margin-right: 8px; vertical-align: middle; }
+.keydot.on { background: var(--ok); }
+
+.panel { background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 10px; }
+.panel ol { margin: 0; padding-left: 1.2em; color: var(--ink-soft); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row input { flex: 1 1 220px; min-width: 0; }
+
+.tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.tab { white-space: nowrap; }
+.tab[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.tab .n { font-variant-numeric: tabular-nums; opacity: .7; margin-left: 6px; font-size: .85em; }
+.newsubj { display: flex; gap: 8px; flex-wrap: wrap; }
+.newsubj input { flex: 1 1 180px; min-width: 0; }
+input[type="text"], input[type="password"], select { font: inherit; color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-height: 40px; }
+
+label.drop {
+  display: grid; gap: 4px; place-items: center; text-align: center; padding: 24px 16px;
+  border: 2px dashed var(--line); border-radius: var(--r); background: var(--sheet); cursor: pointer;
+}
+label.drop.over { border-color: var(--accent); }
+label.drop strong { font-family: var(--font-display); font-size: 1.1rem; }
+label.drop small { color: var(--ink-soft); }
+label.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.uprow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--ink-soft); font-size: .95rem; }
+
+.main { display: grid; gap: 20px; grid-template-columns: 1fr; }
+@media (min-width: 860px) { .main { grid-template-columns: minmax(260px, 340px) 1fr; align-items: start; } }
+.list { display: grid; gap: 8px; }
+.item {
+  display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: center; text-align: left;
+  border-radius: var(--r); padding: 10px 12px; width: 100%;
+}
+.item[aria-current="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.item > div { min-width: 0; }
+.item .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.item .meta { color: var(--ink-soft); font-size: .85rem; }
+.kind { width: 44px; height: 52px; border-radius: 6px; display: grid; place-items: center; font-size: .72rem; font-weight: 700; letter-spacing: .06em; border: 1px solid var(--line); background: var(--paper); }
+.empty { color: var(--ink-soft); padding: 16px; border: 1px dashed var(--line); border-radius: var(--r); }
+
+.viewer { background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r); padding: 20px; display: grid; gap: 16px; min-width: 0; }
+.vhead { display: flex; gap: 12px; justify-content: space-between; align-items: start; flex-wrap: wrap; }
+.vhead > div { min-width: 0; }
+.vhead h2 { overflow-wrap: anywhere; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.vtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.vtab { border: 0; border-radius: 0; background: transparent; padding: 8px 14px; border-bottom: 3px solid transparent; color: var(--ink-soft); font-weight: 700; }
+.vtab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.content { max-height: 72vh; overflow: auto; }
+.content .text { white-space: pre-wrap; max-width: 68ch; overflow-wrap: anywhere; }
+.content img, .content canvas { max-width: 100%; height: auto; display: block; margin: 0 auto 12px; border-radius: 6px; border: 1px solid var(--line); }
+.md { max-width: 68ch; overflow-wrap: anywhere; }
+.md h1, .md h2, .md h3 { margin: 1em 0 .4em; font-size: 1.15rem; }
+.md h1:first-child, .md h2:first-child, .md h3:first-child { margin-top: 0; }
+.md strong { background: linear-gradient(transparent 60%, var(--marker) 60%); }
+.md ul, .md ol { padding-left: 1.3em; }
+.md table { border-collapse: collapse; display: block; overflow-x: auto; }
+.md td, .md th { border: 1px solid var(--line); padding: 4px 8px; }
+.confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px; border-radius: 10px; border: 1px solid var(--danger); }
+.example { display: inline-block; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; background: var(--marker); color: var(--ink); padding: 1px 8px; border-radius: 999px; margin-left: 6px; vertical-align: middle; font-family: var(--font-body); }
+.note { color: var(--ink-soft); font-size: .9rem; }
+.err { border: 1px solid var(--danger); color: var(--ink); border-radius: 10px; padding: 12px; }
+.busy { display: flex; gap: 10px; align-items: center; color: var(--ink-soft); padding: 12px 0; }
+.spin { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--accent); animation: sp 0.9s linear infinite; }
+@keyframes sp { to { transform: rotate(360deg); } }
+
+.score { font-family: var(--font-display); font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.qlist { display: grid; gap: 16px; list-style: none; padding: 0; margin: 0; max-width: 72ch; }
+.q { display: grid; gap: 8px; }
+.q p { margin: 0; font-weight: 700; }
+.q .num { color: var(--ink-soft); font-variant-numeric: tabular-nums; margin-right: 6px; }
+.opt { text-align: left; border-radius: 10px; width: 100%; }
+.opt.right { background: var(--ok-bg); border-color: var(--ok); }
+.opt.wrong { background: var(--bad-bg); border-color: var(--danger); }
+.expl { font-size: .95rem; padding: 8px 12px; border-left: 3px solid var(--line); color: var(--ink-soft); }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--paper); padding: 10px 18px; border-radius: 999px; max-width: calc(100% - 32px); z-index: 20; }
+@media (prefers-reduced-motion: no-preference) { .item, button { transition: border-color .15s, background .15s; } }
+@media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Apuntes de <mark>Erika</mark></h1>
+      <p class="sub">Sube tus apuntes, ordénalos por asignatura y saca resúmenes y quizzes con un toque.</p>
+    </div>
+    <button id="keybtn"><span class="keydot" id="keydot"></span>Conexión con Gemini</button>
+  </header>
+
+  <section class="panel" id="keypanel" hidden aria-label="Conexión con Gemini">
+    <h2>Conectar con Gemini</h2>
+    <p class="note" style="margin:0">Se hace una sola vez en cada dispositivo. La clave es gratuita y se guarda solo en este navegador.</p>
+    <ol>
+      <li>Entra en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> con una cuenta de Google.</li>
+      <li>Pulsa «Create API key» y copia la clave.</li>
+      <li>Pégala aquí y pulsa «Guardar».</li>
+    </ol>
+    <form class="row" id="keyform">
+      <input type="password" id="keyinput" placeholder="Pega aquí la clave (empieza por AIza…)" autocomplete="off" aria-label="Clave de Gemini">
+      <button class="primary" type="submit">Guardar</button>
+      <button class="ghost" type="button" id="keyforget">Quitar clave</button>
+    </form>
+    <p class="note" id="keystatus" style="margin:0"></p>
+  </section>
+
+  <section aria-label="Asignaturas" style="display:grid;gap:10px">
+    <div class="tabs" id="tabs"></div>
+    <form class="newsubj" id="newsubj" hidden>
+      <input type="text" id="subjname" placeholder="Nombre de la asignatura, p. ej. Anatomía" maxlength="40" aria-label="Nombre de la asignatura">
+      <button class="primary" type="submit">Crear</button>
+      <button class="ghost" type="button" id="cancelsubj">Cancelar</button>
+    </form>
+  </section>
+
+  <section aria-label="Subir apuntes" style="display:grid;gap:8px">
+    <label class="drop" id="drop">
+      <input type="file" id="file" multiple accept=".pdf,.docx,.txt,.md,image/*">
+      <strong>Sube un apunte</strong>
+      <span>Toca aquí o arrastra archivos</span>
+      <small>PDF, Word (.docx), texto o fotos de apuntes</small>
+    </label>
+    <div class="uprow">
+      <label for="target">Se guardará en</label>
+      <select id="target"></select>
+    </div>
+  </section>
+
+  <div class="main">
+    <section aria-label="Mis apuntes" style="display:grid;gap:10px;min-width:0">
+      <h2 id="listtitle">Todos los apuntes</h2>
+      <div class="list" id="list"></div>
+    </section>
+    <section class="viewer" id="viewer" aria-live="polite"></section>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+if (window.pdfjsLib) { try { pdfjsLib.GlobalWorkerOptions.workerSrc = ""; } catch (e) {} }
+
+// ---------- Almacenamiento (IndexedDB, con memoria como respaldo) ----------
+const mem = { subjects: [], notes: [] };
+let db = null;
+function openDB() {
+  return new Promise((res) => {
+    try {
+      const r = indexedDB.open("apuntes-erika", 1);
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        d.createObjectStore("subjects", { keyPath: "id" });
+        d.createObjectStore("notes", { keyPath: "id" });
+      };
+      r.onsuccess = () => { db = r.result; res(); };
+      r.onerror = () => res();
+    } catch (e) { res(); }
+  });
+}
+function all(store) {
+  if (!db) return Promise.resolve(mem[store].slice());
+  return new Promise((res) => {
+    try { const q = db.transaction(store).objectStore(store).getAll(); q.onsuccess = () => res(q.result); q.onerror = () => res([]); }
+    catch (e) { res([]); }
+  });
+}
+function put(store, obj) {
+  if (!db) { mem[store] = mem[store].filter(x => x.id !== obj.id).concat(obj); return Promise.resolve(); }
+  return new Promise((res, rej) => {
+    try { const t = db.transaction(store, "readwrite"); t.objectStore(store).put(obj); t.oncomplete = res; t.onerror = () => rej(t.error); }
+    catch (e) { rej(e); }
+  });
+}
+function del(store, id) {
+  if (!db) { mem[store] = mem[store].filter(x => x.id !== id); return Promise.resolve(); }
+  return new Promise((res) => {
+    try { const t = db.transaction(store, "readwrite"); t.objectStore(store).delete(id); t.oncomplete = res; t.onerror = res; }
+    catch (e) { res(); }
+  });
+}
+const ls = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return ls.m[k] || null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { ls.m[k] = v; } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) { delete ls.m[k]; } },
+  m: {}
+};
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+// ---------- Gemini ----------
+const API = "https://generativelanguage.googleapis.com/v1beta";
+const FALLBACK_MODEL = "gemini-2.5-flash";
+class AIError extends Error {}
+
+async function gfetch(path, opts = {}) {
+  const key = ls.get("gemini-key");
+  if (!key) throw new AIError("Falta conectar con Gemini. Pulsa «Conexión con Gemini» arriba y pega tu clave.");
+  let r;
+  try {
+    r = await fetch(API + path, { ...opts, headers: { "Content-Type": "application/json", "x-goog-api-key": key, ...(opts.headers || {}) } });
+  } catch (e) {
+    throw new AIError("No se pudo conectar con Gemini. Revisa la conexión a internet. Si estás en la versión de prueba privada, aquí no se permite conectar con Google: funcionará en la versión publicada.");
+  }
+  if (!r.ok) {
+    let msg = ""; try { msg = (await r.json()).error?.message || ""; } catch (e) {}
+    if (r.status === 429) throw new AIError("Se ha alcanzado el límite gratuito de Gemini por ahora. Espera un minuto y vuelve a probar; si sigue fallando, el límite diario se renueva mañana.");
+    if (r.status === 400 && /API key/i.test(msg)) throw new AIError("La clave de Gemini no es válida. Vuelve a copiarla desde aistudio.google.com/apikey.");
+    if (r.status === 403) throw new AIError("Gemini ha rechazado la clave. Comprueba que está bien copiada o crea una nueva.");
+    if (r.status === 413 || /too large|exceeds/i.test(msg)) throw new AIError("El archivo es demasiado grande para Gemini. Prueba a dividirlo en partes más pequeñas.");
+    throw new AIError("Gemini ha devuelto un error (" + r.status + "). " + msg);
+  }
+  return r.json();
+}
+
+// Elige el mejor modelo Flash estable que ofrezca la cuenta gratuita.
+async function pickModel() {
+  const cached = ls.get("gemini-model");
+  if (cached) return cached;
+  let model = FALLBACK_MODEL;
+  try {
+    const d = await gfetch("/models?pageSize=200");
+    const ver = (n) => parseFloat((n.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]);
+    const ok = (d.models || []).filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
+      .map(m => m.name.replace("models/", ""))
+      .filter(n => /^gemini-[\d.]+-flash/.test(n) && !/lite|image|tts|live|audio|thinking|exp/.test(n));
+    const stable = ok.filter(n => !/preview/.test(n));
+    const pool = (stable.length ? stable : ok).sort((a, b) => ver(b) - ver(a) || a.length - b.length);
+    if (pool.length) model = pool[0];
+  } catch (e) { if (e instanceof AIError && /clave|conectar/.test(e.message)) throw e; }
+  ls.set("gemini-model", model);
+  return model;
+}
+
+function toB64(blob) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result).split(",")[1]);
+    fr.onerror = () => rej(fr.error);
+    fr.readAsDataURL(blob);
+  });
+}
+async function noteParts(n) {
+  if (n.kind === "pdf" || n.kind === "img") {
+    if (n.blob.size > 18 * 1048576) throw new AIError("Este archivo pesa más de 18 MB y Gemini no lo acepta así. Divídelo en partes más pequeñas.");
+    const mime = n.kind === "pdf" ? "application/pdf" : (n.blob.type || "image/jpeg");
+    return [{ inline_data: { mime_type: mime, data: await toB64(n.blob) } }];
+  }
+  return [{ text: "APUNTES:\n\n" + await noteText(n) }];
+}
+async function noteText(n) {
+  if (n.kind === "docx") return (await mammoth.extractRawText({ arrayBuffer: await n.blob.arrayBuffer() })).value;
+  return n.blob.text();
+}
+async function generate(n, prompt, schema) {
+  const model = await pickModel();
+  const body = {
+    contents: [{ role: "user", parts: [...await noteParts(n), { text: prompt }] }],
+    generationConfig: schema ? { responseMimeType: "application/json", responseSchema: schema, temperature: 0.7 } : { temperature: 0.4 }
+  };
+  let d;
+  try { d = await gfetch(`/models/${model}:generateContent`, { method: "POST", body: JSON.stringify(body) }); }
+  catch (e) {
+    if (/\(404\)/.test(e.message)) { ls.del("gemini-model"); }
+    throw e;
+  }
+  const c = (d.candidates || [])[0];
+  const text = (c?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("").trim();
+  if (!text) throw new AIError(d.promptFeedback?.blockReason ? "Gemini no ha querido procesar este apunte." : "Gemini no ha devuelto nada. Vuelve a intentarlo.");
+  return text;
+}
+
+const SUMMARY_PROMPTS = {
+  corto: "Eres un profesor que ayuda a una estudiante universitaria. Haz un RESUMEN CORTO de estos apuntes, en el mismo idioma que los apuntes (normalmente español). Máximo 150 palabras. Empieza con una frase que diga de qué trata el tema y luego 4 a 7 viñetas con las ideas clave. Pon en **negrita** los términos más importantes. Usa Markdown. No inventes nada que no esté en los apuntes. Si es una foto difícil de leer, resume lo que se entienda y avisa de lo que no.",
+  detallado: "Eres un profesor que ayuda a una estudiante universitaria. Haz un RESUMEN DETALLADO para estudiar estos apuntes, en el mismo idioma que los apuntes (normalmente español). Organízalo con títulos (##) por apartados, viñetas con las ideas, definiciones y datos clave, y pon en **negrita** los términos importantes. Termina con un apartado «## Lo que no puedes olvidar» con 3 a 5 puntos. Usa Markdown. No inventes nada que no esté en los apuntes. Si es una foto difícil de leer, resume lo que se entienda y avisa de lo que no."
+};
+const QUIZ_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    questions: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          question: { type: "STRING" },
+          options: { type: "ARRAY", items: { type: "STRING" } },
+          answer: { type: "INTEGER" },
+          explanation: { type: "STRING" }
+        },
+        required: ["question", "options", "answer", "explanation"]
+      }
+    }
+  },
+  required: ["questions"]
+};
+const quizPrompt = (count) => `Eres un profesor preparando a una estudiante para un examen. Crea un test de ${count} preguntas de opción múltiple sobre estos apuntes, en el mismo idioma que los apuntes (normalmente español). Cada pregunta tiene exactamente 4 opciones y solo una correcta; "answer" es la posición de la correcta empezando en 0. Reparte la posición de la respuesta correcta entre 0, 1, 2 y 3. Mezcla preguntas de memoria con preguntas de comprensión. Las opciones incorrectas deben ser creíbles. "explanation" explica en 1 o 2 frases por qué la correcta es la correcta, basándote en los apuntes. Usa solo información de los apuntes.`;
+
+// ---------- Estado ----------
+let subjects = [], notes = [], current = "all", openId = null, confirming = false;
+let view = "apunte"; // apunte | resumen | quiz
+let busy = null; // { id, what }
+let lastError = null; // { id, what, msg }
+let sumMode = "corto", quizCount = 5;
+const answers = {}; // noteId -> array de respuestas elegidas
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const md = (s) => window.marked && window.DOMPurify ? DOMPurify.sanitize(marked.parse(s)) : `<div class="text">${esc(s)}</div>`;
+
+function kindOf(file) {
+  const n = file.name.toLowerCase();
+  if (file.type === "application/pdf" || n.endsWith(".pdf")) return "pdf";
+  if (n.endsWith(".docx")) return "docx";
+  if (file.type.startsWith("image/")) return "img";
+  return "txt";
+}
+const KIND_LABEL = { pdf: "PDF", docx: "WORD", img: "FOTO", txt: "TEXTO" };
+const fmtDate = (t) => new Date(t).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+const fmtSize = (b) => b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
+
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 2600);
+}
+
+// ---------- Ejemplo inicial ----------
+const EXAMPLE_SUMMARY = "La **célula** es la unidad básica de la vida: todo ser vivo está formado por una o más células.\n\n- Hay dos tipos: **procariotas** (sin núcleo, como las bacterias) y **eucariotas** (con núcleo, como las animales y vegetales).\n- La **mitocondria** produce energía (**ATP**) con la respiración celular.\n- El **cloroplasto** hace la fotosíntesis y solo está en células vegetales.\n- Los **ribosomas** fabrican proteínas.\n- El **núcleo** guarda el ADN y dirige la célula.";
+const EXAMPLE_QUIZ = [
+  { question: "¿Qué diferencia a una célula procariota de una eucariota?", options: ["La procariota no tiene núcleo definido", "La procariota tiene cloroplastos", "La eucariota no tiene ADN", "La eucariota es siempre una bacteria"], answer: 0, explanation: "Según los apuntes, las procariotas no tienen núcleo definido y las eucariotas tienen un núcleo rodeado de membrana." },
+  { question: "¿Qué orgánulo produce la energía (ATP) de la célula?", options: ["Ribosoma", "Núcleo", "Mitocondria", "Cloroplasto"], answer: 2, explanation: "La mitocondria produce ATP mediante la respiración celular." },
+  { question: "¿Dónde se encuentran los cloroplastos?", options: ["En todas las células", "Solo en células vegetales", "Solo en bacterias", "Solo en células animales"], answer: 1, explanation: "Los apuntes indican que el cloroplasto realiza la fotosíntesis solo en células vegetales." }
+];
+async function seed() {
+  const s = { id: "ejemplo", name: "Biología", created: Date.now() };
+  await put("subjects", s);
+  const text = "Tema 3. La célula\n\nLa célula es la unidad básica de la vida. Todos los seres vivos están formados por una o más células.\n\nTipos de célula:\n• Procariota: sin núcleo definido. Ejemplo: bacterias.\n• Eucariota: con núcleo rodeado de membrana. Ejemplo: células animales y vegetales.\n\nOrgánulos importantes:\n• Mitocondria: produce energía (ATP) mediante la respiración celular.\n• Cloroplasto: realiza la fotosíntesis (solo en células vegetales).\n• Ribosoma: fabrica proteínas.\n• Núcleo: guarda el ADN y controla la actividad de la célula.";
+  await put("notes", { id: "ejemplo-nota", subject: "ejemplo", name: "Tema 3 - La célula.txt", kind: "txt", size: text.length, added: Date.now(), blob: new Blob([text], { type: "text/plain" }), example: true });
+}
+async function upgradeExample() {
+  const n = notes.find(x => x.id === "ejemplo-nota");
+  if (n && !n.summary && !n.quiz) {
+    n.summary = { mode: "corto", text: EXAMPLE_SUMMARY, at: Date.now() };
+    n.quiz = { questions: EXAMPLE_QUIZ, at: Date.now() };
+    await put("notes", n);
+  }
+}
+
+// ---------- Render ----------
+function renderKey() {
+  const has = !!ls.get("gemini-key");
+  $("keydot").classList.toggle("on", has);
+  $("keystatus").textContent = has ? "Conectado: hay una clave guardada en este navegador." : "Todavía no hay ninguna clave guardada.";
+}
+function renderTabs() {
+  const counts = {}; notes.forEach(n => counts[n.subject] = (counts[n.subject] || 0) + 1);
+  const tab = (id, label, n) => `<button class="tab" data-s="${id}" aria-pressed="${current === id}">${esc(label)}<span class="n">${n}</span></button>`;
+  $("tabs").innerHTML = tab("all", "Todas", notes.length) +
+    subjects.map(s => tab(s.id, s.name, counts[s.id] || 0)).join("") +
+    `<button class="tab ghost" id="addsubj">+ Asignatura</button>`;
+  $("target").innerHTML = subjects.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("") || `<option value="">Sin asignatura</option>`;
+  if (current !== "all") $("target").value = current;
+}
+function renderList() {
+  const list = notes.filter(n => current === "all" || n.subject === current).sort((a, b) => b.added - a.added);
+  const sname = (id) => (subjects.find(s => s.id === id) || {}).name || "Sin asignatura";
+  $("listtitle").textContent = current === "all" ? "Todos los apuntes" : sname(current);
+  $("list").innerHTML = list.length ? list.map(n => `
+    <button class="item" data-id="${n.id}" aria-current="${n.id === openId}">
+      <span class="kind">${KIND_LABEL[n.kind]}</span>
+      <div><span class="name">${esc(n.name)}</span>
+      <span class="meta">${esc(sname(n.subject))} · ${fmtDate(n.added)} · ${fmtSize(n.size)}${n.summary ? " · resumen" : ""}${n.quiz ? " · quiz" : ""}${n.example ? '<span class="example">Ejemplo</span>' : ""}</span></div>
+    </button>`).join("") : `<p class="empty">Aún no hay apuntes aquí. Sube el primero con el recuadro de arriba.</p>`;
+}
+function renderViewer() {
+  const v = $("viewer");
+  const n = notes.find(x => x.id === openId);
+  if (!n) { v.innerHTML = `<p class="empty" style="border:0">Elige un apunte de la lista para verlo.</p>`; return; }
+  const tab = (id, label) => `<button class="vtab" role="tab" data-v="${id}" aria-selected="${view === id}">${label}</button>`;
+  v.innerHTML = `
+    <div class="vhead">
+      <div><h2>${esc(n.name)}${n.example ? '<span class="example">Ejemplo</span>' : ""}</h2>
+      <p class="sub">${KIND_LABEL[n.kind]} · subido el ${fmtDate(n.added)}</p></div>
+      <div class="actions"><button class="danger" id="delbtn">Borrar</button></div>
+    </div>
+    <div id="confirm"></div>
+    <div class="vtabs" role="tablist">${tab("apunte", "Apunte")}${tab("resumen", "Resumen")}${tab("quiz", "Quiz")}</div>
+    <div class="content" id="content"></div>`;
+  renderConfirm();
+  if (view === "apunte") renderOriginal(n);
+  else if (view === "resumen") renderSummary(n);
+  else renderQuiz(n);
+}
+function busyHtml(what) { return `<div class="busy"><span class="spin"></span>${what}</div>`; }
+function errHtml(n, what) { return lastError && lastError.id === n.id && lastError.what === what ? `<p class="err">${esc(lastError.msg)}</p>` : ""; }
+
+function renderSummary(n) {
+  const c = $("content");
+  const isBusy = busy && busy.id === n.id && busy.what === "resumen";
+  const modeBtn = (m, l) => `<button class="tab" data-sm="${m}" aria-pressed="${sumMode === m}">${l}</button>`;
+  c.innerHTML = `<div style="display:grid;gap:14px">
+    <div class="actions">${modeBtn("corto", "Corto")}${modeBtn("detallado", "Detallado")}
+      <button class="primary" id="gosum" ${isBusy || busy ? "disabled" : ""}>${n.summary ? "Hacer otro resumen" : "Hacer resumen"}</button></div>
+    ${errHtml(n, "resumen")}
+    ${isBusy ? busyHtml("Gemini está leyendo tus apuntes…") : ""}
+    ${n.summary ? `<p class="note" style="margin:0">Resumen ${n.summary.mode} · ${fmtDate(n.summary.at)}</p><div class="md">${md(n.summary.text)}</div>`
+      : (isBusy ? "" : `<p class="note">Elige corto o detallado y pulsa «Hacer resumen». El resumen se guarda con el apunte.</p>`)}
+  </div>`;
+}
+function renderQuiz(n) {
+  const c = $("content");
+  const isBusy = busy && busy.id === n.id && busy.what === "quiz";
+  const cntBtn = (k) => `<button class="tab" data-qc="${k}" aria-pressed="${quizCount === k}">${k} preguntas</button>`;
+  const q = n.quiz?.questions || [];
+  const a = answers[n.id] || (answers[n.id] = []);
+  const done = a.filter(x => x !== undefined).length;
+  const right = q.reduce((s, x, i) => s + (a[i] === x.answer ? 1 : 0), 0);
+  c.innerHTML = `<div style="display:grid;gap:14px">
+    <div class="actions">${cntBtn(5)}${cntBtn(10)}${cntBtn(15)}
+      <button class="primary" id="goquiz" ${busy ? "disabled" : ""}>${q.length ? "Hacer otro quiz" : "Hacer quiz"}</button></div>
+    ${errHtml(n, "quiz")}
+    ${isBusy ? busyHtml("Gemini está preparando las preguntas…") : ""}
+    ${q.length ? `
+      <div class="actions"><span class="score">${right} de ${q.length} correctas</span>
+        <span class="note">${done < q.length ? `Te quedan ${q.length - done}` : (right === q.length ? "¡Todo bien!" : "Terminado")}</span>
+        ${done ? `<button class="ghost" id="retry">Repetir</button>` : ""}</div>
+      <ol class="qlist">${q.map((x, i) => {
+        const chosen = a[i];
+        return `<li class="q"><p><span class="num">${i + 1}.</span>${esc(x.question)}</p>
+          ${x.options.map((o, j) => {
+            let cls = "";
+            if (chosen !== undefined) { if (j === x.answer) cls = "right"; else if (j === chosen) cls = "wrong"; }
+            return `<button class="opt ${cls}" data-q="${i}" data-o="${j}" ${chosen !== undefined ? "disabled" : ""}>${esc(o)}</button>`;
+          }).join("")}
+          ${chosen !== undefined ? `<div class="expl">${chosen === x.answer ? "Correcto. " : "No era esa. "}${esc(x.explanation)}</div>` : ""}
+        </li>`;
+      }).join("")}</ol>`
+      : (isBusy ? "" : `<p class="note">Elige cuántas preguntas quieres y pulsa «Hacer quiz». Al responder verás al momento si aciertas y por qué.</p>`)}
+  </div>`;
+}
+async function renderOriginal(n) {
+  const c = $("content");
+  c.innerHTML = `<p class="sub">Cargando…</p>`;
+  try {
+    if (n.kind === "img") {
+      const img = new Image(); img.alt = n.name; img.src = URL.createObjectURL(n.blob); c.replaceChildren(img);
+    } else if (n.kind === "txt" || n.kind === "docx") {
+      const t = (await noteText(n)).trim();
+      c.innerHTML = `<div class="text">${esc(t || "Este documento no tiene texto.")}</div>`;
+    } else if (n.kind === "pdf") {
+      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await n.blob.arrayBuffer()) }).promise;
+      c.innerHTML = `<p class="sub">${pdf.numPages} página${pdf.numPages > 1 ? "s" : ""}</p>`;
+      const max = Math.min(pdf.numPages, 15);
+      for (let i = 1; i <= max; i++) {
+        if (openId !== n.id || view !== "apunte") return;
+        const page = await pdf.getPage(i);
+        const vp = page.getViewport({ scale: 1.4 });
+        const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+        await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+        c.appendChild(cv);
+      }
+      if (pdf.numPages > max) c.insertAdjacentHTML("beforeend", `<p class="sub">Se muestran las primeras ${max} páginas.</p>`);
+    }
+  } catch (e) {
+    c.innerHTML = `<p class="sub">No se pudo mostrar este archivo. Sigue guardado y puedes hacer el resumen o el quiz igualmente.</p>`;
+  }
+}
+function renderConfirm() {
+  const box = $("confirm"); if (!box) return;
+  box.innerHTML = confirming ? `<div class="confirm"><span>¿Borrar este apunte con su resumen y su quiz? No se puede deshacer.</span>
+    <button class="danger" id="yesdel">Sí, borrar</button><button class="ghost" id="nodel">Cancelar</button></div>` : "";
+}
+function render() { renderKey(); renderTabs(); renderList(); renderViewer(); }
+function refreshIfOpen(id) { if (openId === id) renderViewer(); renderList(); }
+
+// ---------- Acciones ----------
+async function addFiles(files) {
+  if (!files.length) return;
+  let subject = $("target").value;
+  if (!subject) { const s = { id: uid(), name: "General", created: Date.now() }; await put("subjects", s); subjects.push(s); subject = s.id; }
+  let last = null, ok = 0;
+  for (const f of files) {
+    const n = { id: uid(), subject, name: f.name, kind: kindOf(f), size: f.size, added: Date.now(), blob: f };
+    try { await put("notes", n); notes.push(n); last = n.id; ok++; } catch (e) { toast("No se pudo guardar " + f.name + ". Puede que el navegador no tenga espacio."); }
+  }
+  if (ok) { openId = last; confirming = false; view = "apunte"; current = subject; render(); toast(ok === 1 ? "Apunte guardado" : ok + " apuntes guardados"); }
+}
+async function runAI(n, what) {
+  if (!ls.get("gemini-key")) { $("keypanel").hidden = false; $("keyinput").focus(); toast("Primero conecta con Gemini"); return; }
+  busy = { id: n.id, what }; lastError = null; refreshIfOpen(n.id);
+  try {
+    if (what === "resumen") {
+      const text = await generate(n, SUMMARY_PROMPTS[sumMode]);
+      n.summary = { mode: sumMode, text, at: Date.now() };
+    } else {
+      const raw = await generate(n, quizPrompt(quizCount), QUIZ_SCHEMA);
+      let data; try { data = JSON.parse(raw); } catch (e) { throw new AIError("Gemini devolvió el quiz con un formato raro. Vuelve a intentarlo."); }
+      const qs = (data.questions || []).filter(q => q.question && Array.isArray(q.options) && q.options.length >= 2 && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length);
+      if (!qs.length) throw new AIError("Gemini no ha podido sacar preguntas de este apunte. Prueba con otro o vuelve a intentarlo.");
+      n.quiz = { questions: qs, at: Date.now() };
+      answers[n.id] = [];
+    }
+    await put("notes", n);
+    toast(what === "resumen" ? "Resumen listo" : "Quiz listo");
+  } catch (e) {
+    lastError = { id: n.id, what, msg: e instanceof AIError ? e.message : "Algo ha fallado: " + (e.message || e) };
+  } finally {
+    busy = null; refreshIfOpen(n.id);
+  }
+}
+
+document.addEventListener("click", async (e) => {
+  const t = e.target.closest("button"); if (!t) return;
+  const n = notes.find(x => x.id === openId);
+  if (t.dataset.s) { current = t.dataset.s; renderTabs(); renderList(); return; }
+  if (t.dataset.v) { view = t.dataset.v; renderViewer(); return; }
+  if (t.dataset.sm) { sumMode = t.dataset.sm; renderViewer(); return; }
+  if (t.dataset.qc) { quizCount = +t.dataset.qc; renderViewer(); return; }
+  if (t.dataset.q !== undefined && n) { (answers[n.id] ||= [])[+t.dataset.q] = +t.dataset.o; renderViewer(); return; }
+  if (t.id === "retry" && n) { answers[n.id] = []; renderViewer(); return; }
+  if (t.id === "gosum" && n) { runAI(n, "resumen"); return; }
+  if (t.id === "goquiz" && n) { runAI(n, "quiz"); return; }
+  if (t.id === "keybtn") { $("keypanel").hidden = !$("keypanel").hidden; return; }
+  if (t.id === "keyforget") { ls.del("gemini-key"); ls.del("gemini-model"); renderKey(); toast("Clave quitada"); return; }
+  if (t.id === "addsubj") { $("newsubj").hidden = false; $("subjname").focus(); return; }
+  if (t.id === "cancelsubj") { $("newsubj").hidden = true; return; }
+  if (t.dataset.id) { openId = t.dataset.id; confirming = false; view = "apunte"; renderList(); renderViewer(); return; }
+  if (t.id === "delbtn") { confirming = true; renderConfirm(); return; }
+  if (t.id === "nodel") { confirming = false; renderConfirm(); return; }
+  if (t.id === "yesdel") {
+    await del("notes", openId); notes = notes.filter(x => x.id !== openId); openId = null; confirming = false; render(); toast("Apunte borrado");
+  }
+});
+$("keyform").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const k = $("keyinput").value.trim(); if (!k) return;
+  ls.set("gemini-key", k); ls.del("gemini-model"); $("keyinput").value = "";
+  renderKey(); $("keypanel").hidden = true; toast("Clave guardada");
+});
+$("newsubj").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = $("subjname").value.trim(); if (!name) return;
+  const s = { id: uid(), name, created: Date.now() };
+  await put("subjects", s); subjects.push(s); current = s.id;
+  $("subjname").value = ""; $("newsubj").hidden = true; render(); toast("Asignatura creada");
+});
+$("file").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; });
+const drop = $("drop");
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, () => drop.classList.remove("over")));
+drop.addEventListener("drop", (e) => { e.preventDefault(); addFiles([...e.dataTransfer.files]); });
+
+(async () => {
+  await openDB();
+  subjects = await all("subjects");
+  if (!subjects.length) { await seed(); subjects = await all("subjects"); }
+  notes = await all("notes");
+  await upgradeExample();
+  subjects.sort((a, b) => a.created - b.created);
+  openId = (notes.find(n => n.example) || notes[0] || {}).id || null;
+  if (notes.find(n => n.id === openId)?.summary) view = "resumen";
+  render();
+})();
+</script>
+
+</body>
+</html>

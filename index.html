@@ -217,6 +217,7 @@ label.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
       <button class="primary" type="submit">Crear</button>
       <button class="ghost" type="button" id="cancelsubj">Cancelar</button>
     </form>
+    <div id="subjtools"></div>
   </section>
 
   <section aria-label="Subir apuntes" style="display:grid;gap:8px">
@@ -547,6 +548,25 @@ function renderTabs() {
     `<button class="tab ghost" id="addsubj">+ Asignatura</button>`;
   $("target").innerHTML = subjects.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("") || `<option value="">Sin asignatura</option>`;
   if (current !== "all") $("target").value = current;
+  renderSubjTools();
+}
+let subjMode = null; // null | "rename" | "delete"
+function renderSubjTools() {
+  const box = $("subjtools");
+  const s = subjects.find(x => x.id === current);
+  if (!s) { box.innerHTML = ""; subjMode = null; return; }
+  const count = notes.filter(n => n.subject === s.id).length;
+  if (subjMode === "rename") {
+    box.innerHTML = `<form class="newsubj" id="renameform">
+      <input type="text" id="renameinput" value="${esc(s.name)}" maxlength="40" aria-label="Nuevo nombre de la asignatura">
+      <button class="primary" type="submit">Guardar nombre</button><button class="ghost" type="button" id="subjcancel">Cancelar</button></form>`;
+    $("renameinput").focus();
+  } else if (subjMode === "delete") {
+    box.innerHTML = `<div class="confirm"><span>¿Borrar «${esc(s.name)}»${count ? ` y sus ${count} apunte${count > 1 ? "s" : ""}` : ""}? No se puede deshacer.</span>
+      <button class="danger" id="subjyes">Sí, borrar</button><button class="ghost" id="subjcancel">Cancelar</button></div>`;
+  } else {
+    box.innerHTML = `<div class="actions"><button class="ghost" id="subjrename">Renombrar «${esc(s.name)}»</button><button class="danger" id="subjdel">Borrar asignatura</button></div>`;
+  }
 }
 function renderList() {
   const list = notes.filter(n => current === "all" || n.subject === current).sort((a, b) => b.added - a.added);
@@ -872,7 +892,7 @@ async function runAI(n, what) {
 document.addEventListener("click", async (e) => {
   const t = e.target.closest("button"); if (!t) return;
   const n = notes.find(x => x.id === openId);
-  if (t.dataset.s) { current = t.dataset.s; renderTabs(); renderList(); return; }
+  if (t.dataset.s) { current = t.dataset.s; subjMode = null; renderTabs(); renderList(); return; }
   if (t.dataset.v) { stopSpeak(); vStop(); view = t.dataset.v; renderViewer(); return; }
   if (t.id === "govideo" && n) { vStop(); runAI(n, "video"); return; }
   if (t.id === "vplay" && n?.video) {
@@ -899,6 +919,18 @@ document.addEventListener("click", async (e) => {
   if (t.id === "keyforget") { ls.del("gemini-key"); ls.del("gemini-models"); renderKey(); toast("Clave quitada"); return; }
   if (t.id === "addsubj") { $("newsubj").hidden = false; $("subjname").focus(); return; }
   if (t.id === "cancelsubj") { $("newsubj").hidden = true; return; }
+  if (t.id === "subjrename") { subjMode = "rename"; renderSubjTools(); return; }
+  if (t.id === "subjdel") { subjMode = "delete"; renderSubjTools(); return; }
+  if (t.id === "subjcancel") { subjMode = null; renderSubjTools(); return; }
+  if (t.id === "subjyes") {
+    const id = current;
+    for (const x of notes.filter(n => n.subject === id)) await del("notes", x.id);
+    await del("subjects", id);
+    notes = notes.filter(n => n.subject !== id); subjects = subjects.filter(s => s.id !== id);
+    if (!notes.find(n => n.id === openId)) { openId = null; stopSpeak(); vStop(); }
+    current = "all"; subjMode = null; render(); toast("Asignatura borrada");
+    return;
+  }
   if (t.dataset.id) { stopSpeak(); vStop(); openId = t.dataset.id; confirming = false; view = "apunte"; renderList(); renderViewer(); return; }
   if (t.id === "delbtn") { confirming = true; renderConfirm(); return; }
   if (t.id === "nodel") { confirming = false; renderConfirm(); return; }
@@ -918,6 +950,13 @@ $("keyform").addEventListener("submit", (e) => {
   const k = $("keyinput").value.trim(); if (!k) return;
   ls.set("gemini-key", k); ls.del("gemini-models"); $("keyinput").value = "";
   renderKey(); $("keypanel").hidden = true; toast("Clave guardada");
+});
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "renameform") return;
+  e.preventDefault();
+  const name = $("renameinput").value.trim(); const s = subjects.find(x => x.id === current);
+  if (!name || !s) return;
+  s.name = name; await put("subjects", s); subjMode = null; render(); toast("Nombre cambiado");
 });
 $("newsubj").addEventListener("submit", async (e) => {
   e.preventDefault();

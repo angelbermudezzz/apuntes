@@ -562,7 +562,7 @@ function renderSubjTools() {
       <button class="primary" type="submit">Guardar nombre</button><button class="ghost" type="button" id="subjcancel">Cancelar</button></form>`;
     $("renameinput").focus();
   } else if (subjMode === "delete") {
-    box.innerHTML = `<div class="confirm"><span>¿Borrar «${esc(s.name)}»${count ? ` y sus ${count} apunte${count > 1 ? "s" : ""}` : ""}? No se puede deshacer.</span>
+    box.innerHTML = `<div class="confirm"><span>¿Borrar «${esc(s.name)}»${count ? (count > 1 ? ` y sus ${count} apuntes` : " y su apunte") : ""}? No se puede deshacer.</span>
       <button class="danger" id="subjyes">Sí, borrar</button><button class="ghost" id="subjcancel">Cancelar</button></div>`;
   } else {
     box.innerHTML = `<div class="actions"><button class="ghost" id="subjrename">Renombrar «${esc(s.name)}»</button><button class="danger" id="subjdel">Borrar asignatura</button></div>`;
@@ -974,7 +974,9 @@ drop.addEventListener("drop", (e) => { e.preventDefault(); addFiles([...e.dataTr
 (async () => {
   await openDB();
   subjects = await all("subjects");
-  if (!subjects.length) { await seed(); subjects = await all("subjects"); }
+  // El ejemplo solo se crea la primera vez; si luego se borra, no vuelve.
+  if (!subjects.length && !ls.get("ejemplo-creado")) { await seed(); subjects = await all("subjects"); }
+  ls.set("ejemplo-creado", "1");
   notes = await all("notes");
   await upgradeExample();
   subjects.sort((a, b) => a.created - b.created);

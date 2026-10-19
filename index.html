@@ -30,6 +30,7 @@
   --ok: #1d7f4e;
   --ok-bg: #e3f5ea;
   --bad-bg: #fbe6e4;
+  --m0: #e4eaff; --m1: #ffefc2; --m2: #dff3e6; --m3: #fde2dc; --m4: #ece2fb; --m5: #d9f1f6;
   --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
   --r: 12px;
@@ -39,12 +40,14 @@
     --paper: #11161f; --sheet: #19202c; --ink: #e7ebf3; --ink-soft: #9aa6bf; --line: #2b3445;
     --accent: #7d97ff; --accent-ink: #0d1324; --marker: #8a7a1c; --danger: #ff8a7f;
     --ok: #6fd6a0; --ok-bg: #173527; --bad-bg: #3d1f1d; color-scheme: dark;
+    --m0: #26305a; --m1: #463c17; --m2: #1d3a2a; --m3: #48271f; --m4: #352a4d; --m5: #1b3d45;
   }
 }
 :root[data-theme="dark"] {
   --paper: #11161f; --sheet: #19202c; --ink: #e7ebf3; --ink-soft: #9aa6bf; --line: #2b3445;
   --accent: #7d97ff; --accent-ink: #0d1324; --marker: #8a7a1c; --danger: #ff8a7f;
   --ok: #6fd6a0; --ok-bg: #173527; --bad-bg: #3d1f1d; color-scheme: dark;
+  --m0: #26305a; --m1: #463c17; --m2: #1d3a2a; --m3: #48271f; --m4: #352a4d; --m5: #1b3d45;
 }
 * { box-sizing: border-box; }
 body {
@@ -142,6 +145,24 @@ label.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .opt.right { background: var(--ok-bg); border-color: var(--ok); }
 .opt.wrong { background: var(--bad-bg); border-color: var(--danger); }
 .expl { font-size: .95rem; padding: 8px 12px; border-left: 3px solid var(--line); color: var(--ink-soft); }
+.mapwrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.mapwrap svg { display: block; }
+.mapwrap .link { fill: none; stroke: var(--ink-soft); stroke-opacity: .45; stroke-width: 1.5; }
+.mapwrap rect { stroke: var(--line); }
+.mapwrap .root rect { fill: var(--accent); stroke: var(--accent); }
+.mapwrap .root text { fill: var(--accent-ink); font-weight: 700; }
+.mapwrap text { fill: var(--ink); font-family: var(--font-body); font-size: 13px; }
+.mapwrap .d1 text { font-weight: 700; }
+.mapwrap .d3 rect { fill: var(--sheet); }
+.b0 rect { fill: var(--m0); } .b1 rect { fill: var(--m1); } .b2 rect { fill: var(--m2); }
+.b3 rect { fill: var(--m3); } .b4 rect { fill: var(--m4); } .b5 rect { fill: var(--m5); }
+.outline { max-width: 72ch; display: grid; gap: 12px; }
+.outline section { border-left: 4px solid var(--line); padding-left: 12px; }
+.outline section.b0 { border-color: var(--accent); } .outline section.b1 { border-color: #d8a400; } .outline section.b2 { border-color: var(--ok); }
+.outline section.b3 { border-color: var(--danger); } .outline section.b4 { border-color: #8a5cd1; } .outline section.b5 { border-color: #2a9bb3; }
+.outline h3 { font-size: 1.05rem; }
+.outline ul { margin: 6px 0 0; padding-left: 1.2em; }
+.outline .lvl { color: var(--ink-soft); font-variant-numeric: tabular-nums; margin-right: 6px; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--paper); padding: 10px 18px; border-radius: 999px; max-width: calc(100% - 32px); z-index: 20; }
 @media (prefers-reduced-motion: no-preference) { .item, button { transition: border-color .15s, background .15s; } }
 @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
@@ -151,7 +172,7 @@ label.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
   <header>
     <div>
       <h1>Apuntes de <mark>Erika</mark></h1>
-      <p class="sub">Sube tus apuntes, ordénalos por asignatura y saca resúmenes y quizzes con un toque.</p>
+      <p class="sub">Sube tus apuntes, ordénalos por asignatura y saca resúmenes, quizzes y mapas mentales con un toque.</p>
     </div>
     <button id="keybtn"><span class="keydot" id="keydot"></span>Conexión con Gemini</button>
   </header>
@@ -360,12 +381,40 @@ const QUIZ_SCHEMA = {
 };
 const quizPrompt = (count) => `Eres un profesor preparando a una estudiante para un examen. Crea un test de ${count} preguntas de opción múltiple sobre estos apuntes, en el mismo idioma que los apuntes (normalmente español). Cada pregunta tiene exactamente 4 opciones y solo una correcta; "answer" es la posición de la correcta empezando en 0. Reparte la posición de la respuesta correcta entre 0, 1, 2 y 3. Mezcla preguntas de memoria con preguntas de comprensión. Las opciones incorrectas deben ser creíbles. "explanation" explica en 1 o 2 frases por qué la correcta es la correcta, basándote en los apuntes. Usa solo información de los apuntes.`;
 
+const MAP_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    title: { type: "STRING" },
+    branches: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          title: { type: "STRING" },
+          children: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: { title: { type: "STRING" }, details: { type: "ARRAY", items: { type: "STRING" } } },
+              required: ["title"]
+            }
+          }
+        },
+        required: ["title", "children"]
+      }
+    }
+  },
+  required: ["title", "branches"]
+};
+const MAP_PROMPT = "Eres un profesor que ayuda a una estudiante a estudiar. Convierte estos apuntes en un MAPA MENTAL jerárquico, en el mismo idioma que los apuntes (normalmente español). \"title\" es el tema central en pocas palabras. Crea de 3 a 6 \"branches\" con las ideas principales; cada una con 2 a 5 \"children\" (subideas) y, si ayuda, 1 a 3 \"details\" muy cortos (definiciones, ejemplos, datos). Cada texto debe tener como mucho 8 palabras: son etiquetas, no frases largas. Usa solo información de los apuntes.";
+
 // ---------- Estado ----------
 let subjects = [], notes = [], current = "all", openId = null, confirming = false;
 let view = "apunte"; // apunte | resumen | quiz
 let busy = null; // { id, what }
 let lastError = null; // { id, what, msg }
-let sumMode = "corto", quizCount = 5;
+let sumMode = "corto", quizCount = 5, mapMode = "mapa";
+let speaking = null; // id del apunte que se está leyendo
 const answers = {}; // noteId -> array de respuestas elegidas
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -394,6 +443,14 @@ const EXAMPLE_QUIZ = [
   { question: "¿Qué orgánulo produce la energía (ATP) de la célula?", options: ["Ribosoma", "Núcleo", "Mitocondria", "Cloroplasto"], answer: 2, explanation: "La mitocondria produce ATP mediante la respiración celular." },
   { question: "¿Dónde se encuentran los cloroplastos?", options: ["En todas las células", "Solo en células vegetales", "Solo en bacterias", "Solo en células animales"], answer: 1, explanation: "Los apuntes indican que el cloroplasto realiza la fotosíntesis solo en células vegetales." }
 ];
+const EXAMPLE_MAP = {
+  title: "La célula",
+  branches: [
+    { title: "Qué es", children: [{ title: "Unidad básica de la vida" }, { title: "Todo ser vivo tiene células", details: ["Una o más células"] }] },
+    { title: "Tipos", children: [{ title: "Procariota", details: ["Sin núcleo definido", "Ej.: bacterias"] }, { title: "Eucariota", details: ["Núcleo con membrana", "Ej.: animales y vegetales"] }] },
+    { title: "Orgánulos", children: [{ title: "Mitocondria", details: ["Produce ATP"] }, { title: "Cloroplasto", details: ["Fotosíntesis", "Solo vegetales"] }, { title: "Ribosoma", details: ["Fabrica proteínas"] }, { title: "Núcleo", details: ["Guarda el ADN"] }] }
+  ]
+};
 async function seed() {
   const s = { id: "ejemplo", name: "Biología", created: Date.now() };
   await put("subjects", s);
@@ -402,11 +459,15 @@ async function seed() {
 }
 async function upgradeExample() {
   const n = notes.find(x => x.id === "ejemplo-nota");
-  if (n && !n.summary && !n.quiz) {
+  if (!n) return;
+  let changed = false;
+  if (!n.summary && !n.quiz) {
     n.summary = { mode: "corto", text: EXAMPLE_SUMMARY, at: Date.now() };
     n.quiz = { questions: EXAMPLE_QUIZ, at: Date.now() };
-    await put("notes", n);
+    changed = true;
   }
+  if (!n.map) { n.map = { tree: EXAMPLE_MAP, at: Date.now() }; changed = true; }
+  if (changed) await put("notes", n);
 }
 
 // ---------- Render ----------
@@ -447,12 +508,13 @@ function renderViewer() {
       <div class="actions"><button class="danger" id="delbtn">Borrar</button></div>
     </div>
     <div id="confirm"></div>
-    <div class="vtabs" role="tablist">${tab("apunte", "Apunte")}${tab("resumen", "Resumen")}${tab("quiz", "Quiz")}</div>
+    <div class="vtabs" role="tablist">${tab("apunte", "Apunte")}${tab("resumen", "Resumen")}${tab("quiz", "Quiz")}${tab("mapa", "Mapa")}</div>
     <div class="content" id="content"></div>`;
   renderConfirm();
   if (view === "apunte") renderOriginal(n);
   else if (view === "resumen") renderSummary(n);
-  else renderQuiz(n);
+  else if (view === "quiz") renderQuiz(n);
+  else renderMap(n);
 }
 function busyHtml(what) { return `<div class="busy"><span class="spin"></span>${what}</div>`; }
 function errHtml(n, what) { return lastError && lastError.id === n.id && lastError.what === what ? `<p class="err">${esc(lastError.msg)}</p>` : ""; }
@@ -466,7 +528,12 @@ function renderSummary(n) {
       <button class="primary" id="gosum" ${isBusy || busy ? "disabled" : ""}>${n.summary ? "Hacer otro resumen" : "Hacer resumen"}</button></div>
     ${errHtml(n, "resumen")}
     ${isBusy ? busyHtml("Gemini está leyendo tus apuntes…") : ""}
-    ${n.summary ? `<p class="note" style="margin:0">Resumen ${n.summary.mode} · ${fmtDate(n.summary.at)}</p><div class="md">${md(n.summary.text)}</div>`
+    ${n.summary ? `${canSpeak ? `<div class="actions">
+        <button id="speakbtn">${speaking === n.id ? "Parar audio" : "Escuchar resumen"}</button>
+        <label class="note" for="rate">Velocidad</label>
+        <select id="rate">${[0.8, 1, 1.25, 1.5].map(r => `<option value="${r}" ${r === speakRate ? "selected" : ""}>${String(r).replace(".", ",")}x</option>`).join("")}</select>
+      </div>` : ""}
+      <p class="note" style="margin:0">Resumen ${n.summary.mode} · ${fmtDate(n.summary.at)}</p><div class="md">${md(n.summary.text)}</div>`
       : (isBusy ? "" : `<p class="note">Elige corto o detallado y pulsa «Hacer resumen». El resumen se guarda con el apunte.</p>`)}
   </div>`;
 }
@@ -501,6 +568,98 @@ function renderQuiz(n) {
       : (isBusy ? "" : `<p class="note">Elige cuántas preguntas quieres y pulsa «Hacer quiz». Al responder verás al momento si aciertas y por qué.</p>`)}
   </div>`;
 }
+function renderMap(n) {
+  const c = $("content");
+  const isBusy = busy && busy.id === n.id && busy.what === "mapa";
+  const modeBtn = (m, l) => `<button class="tab" data-mm="${m}" aria-pressed="${mapMode === m}">${l}</button>`;
+  const tree = n.map?.tree;
+  c.innerHTML = `<div style="display:grid;gap:14px">
+    <div class="actions">${modeBtn("mapa", "Mapa mental")}${modeBtn("esquema", "Esquema")}
+      <button class="primary" id="gomap" ${busy ? "disabled" : ""}>${tree ? "Hacer otro mapa" : "Hacer mapa"}</button></div>
+    ${errHtml(n, "mapa")}
+    ${isBusy ? busyHtml("Gemini está ordenando las ideas…") : ""}
+    ${tree ? (mapMode === "mapa" ? `<p class="note" style="margin:0">Desliza hacia los lados para ver el mapa entero.</p><div class="mapwrap">${mapSvg(tree)}</div>` : outlineHtml(tree))
+      : (isBusy ? "" : `<p class="note">Pulsa «Hacer mapa» y Gemini ordenará el apunte en un mapa mental. Con el botón «Esquema» verás lo mismo como lista.</p>`)}
+  </div>`;
+}
+function wrapText(s, max) {
+  const words = String(s).split(/\s+/), lines = [];
+  let cur = "";
+  for (const w of words) {
+    if ((cur + " " + w).trim().length > max && cur) { lines.push(cur); cur = w; }
+    else cur = (cur + " " + w).trim();
+  }
+  if (cur) lines.push(cur);
+  return lines.slice(0, 4);
+}
+function mapSvg(tree) {
+  const W = 150, COL = 172, LH = 17, PAD = 8, GAP = 10;
+  const root = { label: tree.title || "Tema", depth: 0, kids: [] };
+  (tree.branches || []).forEach((b, bi) => {
+    const bn = { label: b.title, depth: 1, branch: bi % 6, kids: [] };
+    (b.children || []).forEach(ch => {
+      const cn = { label: ch.title, depth: 2, branch: bi % 6, kids: [] };
+      (ch.details || []).forEach(d => cn.kids.push({ label: d, depth: 3, branch: bi % 6, kids: [] }));
+      bn.kids.push(cn);
+    });
+    root.kids.push(bn);
+  });
+  let cursor = GAP, maxDepth = 0;
+  const nodes = [];
+  (function lay(nd) {
+    nd.lines = wrapText(nd.label, nd.depth === 0 ? 16 : 19);
+    nd.h = nd.lines.length * LH + PAD * 2;
+    nd.x = 10 + nd.depth * COL;
+    maxDepth = Math.max(maxDepth, nd.depth);
+    nodes.push(nd);
+    if (!nd.kids.length) { nd.y = cursor + nd.h / 2; cursor += nd.h + GAP; }
+    else { nd.kids.forEach(lay); nd.y = (nd.kids[0].y + nd.kids[nd.kids.length - 1].y) / 2; }
+  })(root);
+  const width = 10 + maxDepth * COL + W + 10, height = Math.max(cursor, root.h + GAP * 2);
+  const links = [], boxes = [];
+  for (const nd of nodes) {
+    for (const k of nd.kids) {
+      const x1 = nd.x + W, x2 = k.x, mx = (x1 + x2) / 2;
+      links.push(`<path class="link" d="M${x1},${nd.y} C${mx},${nd.y} ${mx},${k.y} ${x2},${k.y}"/>`);
+    }
+    const cls = nd.depth === 0 ? "root" : `b${nd.branch} d${nd.depth}`;
+    const top = nd.y - nd.h / 2;
+    const tspans = nd.lines.map((l, i) => `<tspan x="${nd.x + 10}" y="${top + PAD + LH * (i + 1) - 4}">${esc(l)}</tspan>`).join("");
+    boxes.push(`<g class="${cls}"><rect x="${nd.x}" y="${top}" width="${W}" height="${nd.h}" rx="8"/><text>${tspans}</text></g>`);
+  }
+  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Mapa mental de ${esc(root.label)}">${links.join("")}${boxes.join("")}</svg>`;
+}
+function outlineHtml(tree) {
+  return `<div class="outline"><h2>${esc(tree.title || "Tema")}</h2>${(tree.branches || []).map((b, bi) => `
+    <section class="b${bi % 6}"><h3><span class="lvl">${bi + 1}.</span>${esc(b.title)}</h3>
+      <ul>${(b.children || []).map((ch, ci) => `<li><strong><span class="lvl">${bi + 1}.${ci + 1}</span>${esc(ch.title)}</strong>
+        ${(ch.details || []).length ? `<ul>${ch.details.map(d => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}</li>`).join("")}</ul>
+    </section>`).join("")}</div>`;
+}
+
+// ---------- Audio (voz del propio dispositivo) ----------
+const canSpeak = "speechSynthesis" in window;
+let speakRate = 1;
+function plainText(mdText) {
+  return mdText.replace(/[#*_`>|]/g, "").replace(/^\s*[-•]\s+/gm, "").replace(/\[(.*?)\]\(.*?\)/g, "$1");
+}
+function speak(n) {
+  if (!canSpeak) return;
+  speechSynthesis.cancel();
+  const parts = plainText(n.summary.text).split(/(?<=[.!?:])\s+|\n+/).map(s => s.trim()).filter(Boolean);
+  const voices = speechSynthesis.getVoices();
+  const voice = voices.find(v => /^es[-_]ES/i.test(v.lang)) || voices.find(v => /^es/i.test(v.lang));
+  speaking = n.id;
+  parts.forEach((p, i) => {
+    const u = new SpeechSynthesisUtterance(p);
+    u.lang = voice ? voice.lang : "es-ES"; if (voice) u.voice = voice; u.rate = speakRate;
+    if (i === parts.length - 1) u.onend = () => { if (speaking === n.id) { speaking = null; if (view === "resumen") renderViewer(); } };
+    speechSynthesis.speak(u);
+  });
+}
+function stopSpeak() { if (canSpeak) speechSynthesis.cancel(); speaking = null; }
+if (canSpeak) { try { speechSynthesis.getVoices(); } catch (e) {} }
+
 async function renderOriginal(n) {
   const c = $("content");
   c.innerHTML = `<p class="sub">Cargando…</p>`;
@@ -555,6 +714,11 @@ async function runAI(n, what) {
     if (what === "resumen") {
       const text = await generate(n, SUMMARY_PROMPTS[sumMode]);
       n.summary = { mode: sumMode, text, at: Date.now() };
+    } else if (what === "mapa") {
+      const raw = await generate(n, MAP_PROMPT, MAP_SCHEMA);
+      let tree; try { tree = JSON.parse(raw); } catch (e) { throw new AIError("Gemini devolvió el mapa con un formato raro. Vuelve a intentarlo."); }
+      if (!tree || !Array.isArray(tree.branches) || !tree.branches.length) throw new AIError("Gemini no ha podido sacar un mapa de este apunte. Vuelve a intentarlo.");
+      n.map = { tree, at: Date.now() };
     } else {
       const raw = await generate(n, quizPrompt(quizCount), QUIZ_SCHEMA);
       let data; try { data = JSON.parse(raw); } catch (e) { throw new AIError("Gemini devolvió el quiz con un formato raro. Vuelve a intentarlo."); }
@@ -564,7 +728,7 @@ async function runAI(n, what) {
       answers[n.id] = [];
     }
     await put("notes", n);
-    toast(what === "resumen" ? "Resumen listo" : "Quiz listo");
+    toast({ resumen: "Resumen listo", quiz: "Quiz listo", mapa: "Mapa listo" }[what]);
   } catch (e) {
     lastError = { id: n.id, what, msg: e instanceof AIError ? e.message : "Algo ha fallado: " + (e.message || e) };
   } finally {
@@ -576,7 +740,10 @@ document.addEventListener("click", async (e) => {
   const t = e.target.closest("button"); if (!t) return;
   const n = notes.find(x => x.id === openId);
   if (t.dataset.s) { current = t.dataset.s; renderTabs(); renderList(); return; }
-  if (t.dataset.v) { view = t.dataset.v; renderViewer(); return; }
+  if (t.dataset.v) { if (t.dataset.v !== "resumen") stopSpeak(); view = t.dataset.v; renderViewer(); return; }
+  if (t.dataset.mm) { mapMode = t.dataset.mm; renderViewer(); return; }
+  if (t.id === "gomap" && n) { runAI(n, "mapa"); return; }
+  if (t.id === "speakbtn" && n) { if (speaking === n.id) stopSpeak(); else speak(n); renderViewer(); return; }
   if (t.dataset.sm) { sumMode = t.dataset.sm; renderViewer(); return; }
   if (t.dataset.qc) { quizCount = +t.dataset.qc; renderViewer(); return; }
   if (t.dataset.q !== undefined && n) { (answers[n.id] ||= [])[+t.dataset.q] = +t.dataset.o; renderViewer(); return; }
@@ -587,11 +754,18 @@ document.addEventListener("click", async (e) => {
   if (t.id === "keyforget") { ls.del("gemini-key"); ls.del("gemini-model"); renderKey(); toast("Clave quitada"); return; }
   if (t.id === "addsubj") { $("newsubj").hidden = false; $("subjname").focus(); return; }
   if (t.id === "cancelsubj") { $("newsubj").hidden = true; return; }
-  if (t.dataset.id) { openId = t.dataset.id; confirming = false; view = "apunte"; renderList(); renderViewer(); return; }
+  if (t.dataset.id) { stopSpeak(); openId = t.dataset.id; confirming = false; view = "apunte"; renderList(); renderViewer(); return; }
   if (t.id === "delbtn") { confirming = true; renderConfirm(); return; }
   if (t.id === "nodel") { confirming = false; renderConfirm(); return; }
   if (t.id === "yesdel") {
     await del("notes", openId); notes = notes.filter(x => x.id !== openId); openId = null; confirming = false; render(); toast("Apunte borrado");
+  }
+});
+document.addEventListener("change", (e) => {
+  if (e.target.id === "rate") {
+    speakRate = +e.target.value;
+    const n = notes.find(x => x.id === openId);
+    if (n && speaking === n.id) speak(n);
   }
 });
 $("keyform").addEventListener("submit", (e) => {

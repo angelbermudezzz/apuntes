@@ -294,7 +294,8 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 // ---------- Gemini ----------
 const API = "https://generativelanguage.googleapis.com/v1beta";
 const FALLBACK_MODEL = "gemini-2.5-flash";
-class AIError extends Error {}
+class AIError extends Error { constructor(msg, status) { super(msg); this.status = status || 0; } }
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function gfetch(path, opts = {}) {
   const key = ls.get("gemini-key");
@@ -307,7 +308,9 @@ async function gfetch(path, opts = {}) {
   }
   if (!r.ok) {
     let msg = ""; try { msg = (await r.json()).error?.message || ""; } catch (e) {}
-    if (r.status === 429) throw new AIError("Se ha alcanzado el límite gratuito de Gemini por ahora. Espera un minuto y vuelve a probar; si sigue fallando, el límite diario se renueva mañana.");
+    if (r.status === 429) throw new AIError("Se ha alcanzado el límite gratuito de Gemini por ahora. Espera un minuto y vuelve a probar; si sigue fallando, el límite diario se renueva mañana.", 429);
+    if (r.status >= 500) throw new AIError("Gemini está saturado ahora mismo (no es un fallo de la app). Espera un par de minutos y vuelve a pulsar el botón.", r.status);
+    if (r.status === 404) throw new AIError("Ese modelo de Gemini ya no está disponible. Vuelve a pulsar el botón.", 404);
     if (r.status === 400 && /API key/i.test(msg)) throw new AIError("La clave de Gemini no es válida. Vuelve a copiarla desde aistudio.google.com/apikey.");
     if (r.status === 403) throw new AIError("Gemini ha rechazado la clave. Comprueba que está bien copiada o crea una nueva.");
     if (r.status === 413 || /too large|exceeds/i.test(msg)) throw new AIError("El archivo es demasiado grande para Gemini. Prueba a dividirlo en partes más pequeñas.");
@@ -316,23 +319,25 @@ async function gfetch(path, opts = {}) {
   return r.json();
 }
 
-// Elige el mejor modelo Flash estable que ofrezca la cuenta gratuita.
-async function pickModel() {
-  const cached = ls.get("gemini-model");
-  if (cached) return cached;
-  let model = FALLBACK_MODEL;
+// Modelos Flash de la cuenta gratuita, del mejor al de reserva.
+// Si uno está saturado o sin cupo, se prueba el siguiente.
+async function pickModels() {
+  try { const c = JSON.parse(ls.get("gemini-models") || "null"); if (Array.isArray(c) && c.length) return c; } catch (e) {}
+  let models = [FALLBACK_MODEL];
   try {
     const d = await gfetch("/models?pageSize=200");
     const ver = (n) => parseFloat((n.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]);
-    const ok = (d.models || []).filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
+    const names = (d.models || []).filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
       .map(m => m.name.replace("models/", ""))
-      .filter(n => /^gemini-[\d.]+-flash/.test(n) && !/lite|image|tts|live|audio|thinking|exp/.test(n));
-    const stable = ok.filter(n => !/preview/.test(n));
-    const pool = (stable.length ? stable : ok).sort((a, b) => ver(b) - ver(a) || a.length - b.length);
-    if (pool.length) model = pool[0];
-  } catch (e) { if (e instanceof AIError && /clave|conectar/.test(e.message)) throw e; }
-  ls.set("gemini-model", model);
-  return model;
+      .filter(n => /^gemini-[\d.]+-flash/.test(n) && !/image|tts|live|audio|thinking|exp|preview/.test(n) && !/-\d{3}$/.test(n));
+    const byVer = (a, b) => ver(b) - ver(a) || a.length - b.length;
+    const full = names.filter(n => !/lite/.test(n)).sort(byVer);
+    const lite = names.filter(n => /lite/.test(n)).sort(byVer);
+    const pool = [...full.slice(0, 3), ...lite.slice(0, 1)];
+    if (pool.length) models = pool;
+  } catch (e) { if (e instanceof AIError && e.status < 500) throw e; }
+  ls.set("gemini-models", JSON.stringify(models));
+  return models;
 }
 
 function toB64(blob) {
@@ -356,17 +361,29 @@ async function noteText(n) {
   return n.blob.text();
 }
 async function generate(n, prompt, schema) {
-  const model = await pickModel();
-  const body = {
+  const models = await pickModels();
+  const body = JSON.stringify({
     contents: [{ role: "user", parts: [...await noteParts(n), { text: prompt }] }],
     generationConfig: schema ? { responseMimeType: "application/json", responseSchema: schema, temperature: 0.7 } : { temperature: 0.4 }
-  };
-  let d;
-  try { d = await gfetch(`/models/${model}:generateContent`, { method: "POST", body: JSON.stringify(body) }); }
-  catch (e) {
-    if (/\(404\)/.test(e.message)) { ls.del("gemini-model"); }
-    throw e;
+  });
+  let d, lastErr;
+  outer: for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { d = await gfetch(`/models/${model}:generateContent`, { method: "POST", body }); break outer; }
+      catch (e) {
+        lastErr = e;
+        if (!(e instanceof AIError)) throw e;
+        if (e.status === 404) { ls.del("gemini-models"); break; }
+        if (e.status === 429) break; // cada modelo tiene su propio cupo: se prueba el siguiente
+        if (e.status >= 500) {
+          if (busy && !busy.retry) { busy.retry = true; refreshIfOpen(n.id); }
+          await sleep(attempt ? 6000 : 2500); continue;
+        }
+        throw e;
+      }
+    }
   }
+  if (!d) throw lastErr || new AIError("No se pudo conectar con Gemini.");
   const c = (d.candidates || [])[0];
   const text = (c?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("").trim();
   if (!text) throw new AIError(d.promptFeedback?.blockReason ? "Gemini no ha querido procesar este apunte." : "Gemini no ha devuelto nada. Vuelve a intentarlo.");
@@ -563,7 +580,7 @@ function renderViewer() {
   else if (view === "mapa") renderMap(n);
   else renderVideo(n);
 }
-function busyHtml(what) { return `<div class="busy"><span class="spin"></span>${what}</div>`; }
+function busyHtml(what) { return `<div class="busy"><span class="spin"></span>${busy?.retry ? "Gemini está saturado; reintentando y probando otro modelo…" : what}</div>`; }
 function errHtml(n, what) { return lastError && lastError.id === n.id && lastError.what === what ? `<p class="err">${esc(lastError.msg)}</p>` : ""; }
 
 function renderSummary(n) {
@@ -879,7 +896,7 @@ document.addEventListener("click", async (e) => {
   if (t.id === "gosum" && n) { runAI(n, "resumen"); return; }
   if (t.id === "goquiz" && n) { runAI(n, "quiz"); return; }
   if (t.id === "keybtn") { $("keypanel").hidden = !$("keypanel").hidden; return; }
-  if (t.id === "keyforget") { ls.del("gemini-key"); ls.del("gemini-model"); renderKey(); toast("Clave quitada"); return; }
+  if (t.id === "keyforget") { ls.del("gemini-key"); ls.del("gemini-models"); renderKey(); toast("Clave quitada"); return; }
   if (t.id === "addsubj") { $("newsubj").hidden = false; $("subjname").focus(); return; }
   if (t.id === "cancelsubj") { $("newsubj").hidden = true; return; }
   if (t.dataset.id) { stopSpeak(); vStop(); openId = t.dataset.id; confirming = false; view = "apunte"; renderList(); renderViewer(); return; }
@@ -899,7 +916,7 @@ document.addEventListener("change", (e) => {
 $("keyform").addEventListener("submit", (e) => {
   e.preventDefault();
   const k = $("keyinput").value.trim(); if (!k) return;
-  ls.set("gemini-key", k); ls.del("gemini-model"); $("keyinput").value = "";
+  ls.set("gemini-key", k); ls.del("gemini-models"); $("keyinput").value = "";
   renderKey(); $("keypanel").hidden = true; toast("Clave guardada");
 });
 $("newsubj").addEventListener("submit", async (e) => {

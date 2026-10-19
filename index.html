@@ -163,6 +163,23 @@ label.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .outline h3 { font-size: 1.05rem; }
 .outline ul { margin: 6px 0 0; padding-left: 1.2em; }
 .outline .lvl { color: var(--ink-soft); font-variant-numeric: tabular-nums; margin-right: 6px; }
+.player { display: grid; gap: 10px; max-width: 760px; }
+.stage {
+  container-type: inline-size; aspect-ratio: 16 / 9; max-width: 100%; border-radius: 12px; overflow: hidden;
+  background: var(--ink); color: var(--paper); display: grid; align-content: center; gap: 3cqw; padding: 5cqw 6cqw; position: relative;
+}
+.stage .scn { font-size: 3.2cqw; letter-spacing: .08em; text-transform: uppercase; opacity: .7; position: absolute; top: 3.5cqw; left: 6cqw; font-variant-numeric: tabular-nums; }
+.stage h3 { font-size: 7.4cqw; line-height: 1.15; }
+.stage h3 span { background: linear-gradient(transparent 62%, var(--marker) 62%); color: var(--paper); }
+.stage ul { margin: 0; padding-left: 1.1em; display: grid; gap: 2cqw; font-size: 5cqw; line-height: 1.3; }
+.stage li { opacity: 0; transform: translateY(6px); }
+.stage li.on { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: no-preference) { .stage li { transition: opacity .5s, transform .5s; } .stage .fade { animation: fin .5s; } }
+@keyframes fin { from { opacity: 0; } to { opacity: 1; } }
+.bars { display: flex; gap: 4px; }
+.bars span { flex: 1; height: 5px; border-radius: 3px; background: var(--line); }
+.bars span.done { background: var(--accent); }
+.subs { min-height: 3em; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--paper); padding: 10px 18px; border-radius: 999px; max-width: calc(100% - 32px); z-index: 20; }
 @media (prefers-reduced-motion: no-preference) { .item, button { transition: border-color .15s, background .15s; } }
 @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
@@ -172,7 +189,7 @@ label.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
   <header>
     <div>
       <h1>Apuntes de <mark>Erika</mark></h1>
-      <p class="sub">Sube tus apuntes, ordénalos por asignatura y saca resúmenes, quizzes y mapas mentales con un toque.</p>
+      <p class="sub">Sube tus apuntes, ordénalos por asignatura y saca resúmenes, quizzes, mapas mentales y vídeos con un toque.</p>
     </div>
     <button id="keybtn"><span class="keydot" id="keydot"></span>Conexión con Gemini</button>
   </header>
@@ -408,6 +425,23 @@ const MAP_SCHEMA = {
 };
 const MAP_PROMPT = "Eres un profesor que ayuda a una estudiante a estudiar. Convierte estos apuntes en un MAPA MENTAL jerárquico, en el mismo idioma que los apuntes (normalmente español). \"title\" es el tema central en pocas palabras. Crea de 3 a 6 \"branches\" con las ideas principales; cada una con 2 a 5 \"children\" (subideas) y, si ayuda, 1 a 3 \"details\" muy cortos (definiciones, ejemplos, datos). Cada texto debe tener como mucho 8 palabras: son etiquetas, no frases largas. Usa solo información de los apuntes.";
 
+const VIDEO_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    title: { type: "STRING" },
+    scenes: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: { heading: { type: "STRING" }, points: { type: "ARRAY", items: { type: "STRING" } }, narration: { type: "STRING" } },
+        required: ["heading", "points", "narration"]
+      }
+    }
+  },
+  required: ["title", "scenes"]
+};
+const VIDEO_PROMPT = "Eres un profesor que graba una VIDEO-LECCIÓN corta para que una estudiante repase estos apuntes, en el mismo idioma que los apuntes (normalmente español). Escribe el guion en 5 a 8 escenas. La primera presenta el tema y la última repasa las 3 ideas clave. En cada escena: \"heading\" es un título de pocas palabras, \"points\" son 1 a 3 frases muy cortas que se verán en pantalla (máximo 10 palabras cada una), y \"narration\" es lo que dice el profesor en voz alta: 2 o 3 frases naturales y cercanas, como si se lo explicaras a una amiga, que expliquen los puntos con un ejemplo cuando ayude. No uses símbolos, emojis ni Markdown. Usa solo información de los apuntes.";
+
 // ---------- Estado ----------
 let subjects = [], notes = [], current = "all", openId = null, confirming = false;
 let view = "apunte"; // apunte | resumen | quiz
@@ -451,6 +485,17 @@ const EXAMPLE_MAP = {
     { title: "Orgánulos", children: [{ title: "Mitocondria", details: ["Produce ATP"] }, { title: "Cloroplasto", details: ["Fotosíntesis", "Solo vegetales"] }, { title: "Ribosoma", details: ["Fabrica proteínas"] }, { title: "Núcleo", details: ["Guarda el ADN"] }] }
   ]
 };
+const EXAMPLE_VIDEO = {
+  title: "La célula en dos minutos",
+  scenes: [
+    { heading: "La célula", points: ["La unidad básica de la vida"], narration: "Hoy repasamos la célula. Es la pieza más pequeña de la que está hecho cualquier ser vivo, desde una bacteria hasta tú." },
+    { heading: "Dos tipos de célula", points: ["Procariota: sin núcleo", "Eucariota: con núcleo"], narration: "Hay dos grandes tipos. Las procariotas no tienen núcleo definido, como las bacterias. Las eucariotas sí lo tienen, como las de animales y plantas." },
+    { heading: "La central de energía", points: ["Mitocondria", "Produce ATP"], narration: "La mitocondria es como la central eléctrica de la célula. Fabrica ATP, que es la energía que la célula usa para todo." },
+    { heading: "Solo en las plantas", points: ["Cloroplasto", "Hace la fotosíntesis"], narration: "El cloroplasto solo aparece en células vegetales. Es donde se hace la fotosíntesis." },
+    { heading: "Fábrica y cerebro", points: ["Ribosoma: fabrica proteínas", "Núcleo: guarda el ADN"], narration: "Los ribosomas fabrican proteínas. Y el núcleo guarda el ADN y dirige todo lo que hace la célula." },
+    { heading: "Lo que no puedes olvidar", points: ["Procariota sin núcleo, eucariota con núcleo", "Mitocondria igual a energía", "Cloroplasto solo en vegetales"], narration: "Para el examen: procariota sin núcleo y eucariota con núcleo, la mitocondria da energía, y el cloroplasto solo está en las plantas." }
+  ]
+};
 async function seed() {
   const s = { id: "ejemplo", name: "Biología", created: Date.now() };
   await put("subjects", s);
@@ -467,6 +512,7 @@ async function upgradeExample() {
     changed = true;
   }
   if (!n.map) { n.map = { tree: EXAMPLE_MAP, at: Date.now() }; changed = true; }
+  if (!n.video) { n.video = { script: EXAMPLE_VIDEO, at: Date.now() }; changed = true; }
   if (changed) await put("notes", n);
 }
 
@@ -508,13 +554,14 @@ function renderViewer() {
       <div class="actions"><button class="danger" id="delbtn">Borrar</button></div>
     </div>
     <div id="confirm"></div>
-    <div class="vtabs" role="tablist">${tab("apunte", "Apunte")}${tab("resumen", "Resumen")}${tab("quiz", "Quiz")}${tab("mapa", "Mapa")}</div>
+    <div class="vtabs" role="tablist">${tab("apunte", "Apunte")}${tab("resumen", "Resumen")}${tab("quiz", "Quiz")}${tab("mapa", "Mapa")}${tab("video", "Vídeo")}</div>
     <div class="content" id="content"></div>`;
   renderConfirm();
   if (view === "apunte") renderOriginal(n);
   else if (view === "resumen") renderSummary(n);
   else if (view === "quiz") renderQuiz(n);
-  else renderMap(n);
+  else if (view === "mapa") renderMap(n);
+  else renderVideo(n);
 }
 function busyHtml(what) { return `<div class="busy"><span class="spin"></span>${what}</div>`; }
 function errHtml(n, what) { return lastError && lastError.id === n.id && lastError.what === what ? `<p class="err">${esc(lastError.msg)}</p>` : ""; }
@@ -637,6 +684,68 @@ function outlineHtml(tree) {
     </section>`).join("")}</div>`;
 }
 
+// ---------- Vídeo-lección (escenas animadas + voz del dispositivo) ----------
+const vp = { id: null, i: 0, playing: false, timers: [] };
+function vClear() { vp.timers.forEach(clearTimeout); vp.timers = []; if (canSpeak) speechSynthesis.cancel(); }
+function vStop() { vClear(); vp.playing = false; }
+function renderVideo(n) {
+  const c = $("content");
+  const isBusy = busy && busy.id === n.id && busy.what === "video";
+  const sc = n.video?.script;
+  if (vp.id !== n.id) { vStop(); vp.id = n.id; vp.i = 0; vp.ended = false; }
+  c.innerHTML = `<div style="display:grid;gap:14px">
+    <div class="actions"><button class="primary" id="govideo" ${busy ? "disabled" : ""}>${sc ? "Hacer otro vídeo" : "Hacer vídeo"}</button>
+      ${sc ? `<span class="note">${esc(sc.title || "")} · ${sc.scenes.length} escenas</span>` : ""}</div>
+    ${errHtml(n, "video")}
+    ${isBusy ? busyHtml("Gemini está escribiendo el guion del vídeo…") : ""}
+    ${sc ? `<div class="player">
+        <div class="bars" id="vbars"></div>
+        <div class="stage" id="vstage"></div>
+        <div class="actions"><button id="vprev">Anterior</button><button class="primary" id="vplay">Reproducir</button><button id="vnext">Siguiente</button>
+          ${canSpeak ? "" : `<span class="note">Este navegador no tiene voz: el vídeo avanza solo con subtítulos.</span>`}</div>
+        <div class="subs" id="vsubs" aria-live="polite"></div>
+      </div>`
+      : (isBusy ? "" : `<p class="note">Pulsa «Hacer vídeo» y Gemini preparará una vídeo-lección corta con este apunte: escenas animadas y una voz que te lo explica.</p>`)}
+  </div>`;
+  if (sc) vDraw(n, false);
+}
+function vDraw(n, animate) {
+  const sc = n.video.script, s = sc.scenes[vp.i];
+  if (!$("vstage")) return;
+  $("vbars").innerHTML = sc.scenes.map((_, k) => `<span class="${k <= vp.i ? "done" : ""}"></span>`).join("");
+  $("vstage").innerHTML = `<span class="scn">${vp.i + 1} / ${sc.scenes.length}</span>
+    <h3 class="fade"><span>${esc(s.heading)}</span></h3>
+    <ul>${(s.points || []).map(p => `<li class="${animate ? "" : "on"}">${esc(p)}</li>`).join("")}</ul>`;
+  $("vsubs").textContent = s.narration;
+  $("vplay").textContent = vp.playing ? "Pausa" : (vp.ended ? "Ver otra vez" : "Reproducir");
+}
+function vPlayScene(n) {
+  vClear();
+  const sc = n.video.script, s = sc.scenes[vp.i];
+  vDraw(n, true);
+  const lis = [...document.querySelectorAll("#vstage li")];
+  lis.forEach((li, k) => vp.timers.push(setTimeout(() => li.classList.add("on"), 400 + k * 1600)));
+  const words = s.narration.split(/\s+/).length;
+  const est = Math.max(4000, words * 420 / speakRate);
+  let advanced = false;
+  const next = () => {
+    if (advanced || !vp.playing || vp.id !== n.id) return; advanced = true;
+    if (vp.i < sc.scenes.length - 1) { vp.timers.push(setTimeout(() => { vp.i++; vPlayScene(n); }, 700)); }
+    else { vp.playing = false; vp.ended = true; vDraw(n, false); }
+  };
+  if (canSpeak) {
+    const voices = speechSynthesis.getVoices();
+    const voice = voices.find(v => /^es[-_]ES/i.test(v.lang)) || voices.find(v => /^es/i.test(v.lang));
+    const u = new SpeechSynthesisUtterance(s.narration);
+    u.lang = voice ? voice.lang : "es-ES"; if (voice) u.voice = voice; u.rate = speakRate;
+    u.onend = next;
+    speechSynthesis.speak(u);
+    vp.timers.push(setTimeout(next, est * 2.2)); // por si el navegador no avisa al terminar
+  } else {
+    vp.timers.push(setTimeout(next, est));
+  }
+}
+
 // ---------- Audio (voz del propio dispositivo) ----------
 const canSpeak = "speechSynthesis" in window;
 let speakRate = 1;
@@ -714,6 +823,13 @@ async function runAI(n, what) {
     if (what === "resumen") {
       const text = await generate(n, SUMMARY_PROMPTS[sumMode]);
       n.summary = { mode: sumMode, text, at: Date.now() };
+    } else if (what === "video") {
+      const raw = await generate(n, VIDEO_PROMPT, VIDEO_SCHEMA);
+      let script; try { script = JSON.parse(raw); } catch (e) { throw new AIError("Gemini devolvió el vídeo con un formato raro. Vuelve a intentarlo."); }
+      script.scenes = (script.scenes || []).filter(s => s.heading && s.narration);
+      if (!script.scenes.length) throw new AIError("Gemini no ha podido preparar un vídeo de este apunte. Vuelve a intentarlo.");
+      n.video = { script, at: Date.now() };
+      vStop(); vp.i = 0; vp.ended = false;
     } else if (what === "mapa") {
       const raw = await generate(n, MAP_PROMPT, MAP_SCHEMA);
       let tree; try { tree = JSON.parse(raw); } catch (e) { throw new AIError("Gemini devolvió el mapa con un formato raro. Vuelve a intentarlo."); }
@@ -728,7 +844,7 @@ async function runAI(n, what) {
       answers[n.id] = [];
     }
     await put("notes", n);
-    toast({ resumen: "Resumen listo", quiz: "Quiz listo", mapa: "Mapa listo" }[what]);
+    toast({ resumen: "Resumen listo", quiz: "Quiz listo", mapa: "Mapa listo", video: "Vídeo listo" }[what]);
   } catch (e) {
     lastError = { id: n.id, what, msg: e instanceof AIError ? e.message : "Algo ha fallado: " + (e.message || e) };
   } finally {
@@ -740,7 +856,19 @@ document.addEventListener("click", async (e) => {
   const t = e.target.closest("button"); if (!t) return;
   const n = notes.find(x => x.id === openId);
   if (t.dataset.s) { current = t.dataset.s; renderTabs(); renderList(); return; }
-  if (t.dataset.v) { if (t.dataset.v !== "resumen") stopSpeak(); view = t.dataset.v; renderViewer(); return; }
+  if (t.dataset.v) { stopSpeak(); vStop(); view = t.dataset.v; renderViewer(); return; }
+  if (t.id === "govideo" && n) { vStop(); runAI(n, "video"); return; }
+  if (t.id === "vplay" && n?.video) {
+    if (vp.playing) { vStop(); vDraw(n, false); }
+    else { stopSpeak(); if (vp.ended) vp.i = 0; vp.playing = true; vp.ended = false; vPlayScene(n); }
+    return;
+  }
+  if ((t.id === "vnext" || t.id === "vprev") && n?.video) {
+    const max = n.video.script.scenes.length - 1;
+    vp.i = Math.min(max, Math.max(0, vp.i + (t.id === "vnext" ? 1 : -1))); vp.ended = false;
+    if (vp.playing) vPlayScene(n); else { vClear(); vDraw(n, false); }
+    return;
+  }
   if (t.dataset.mm) { mapMode = t.dataset.mm; renderViewer(); return; }
   if (t.id === "gomap" && n) { runAI(n, "mapa"); return; }
   if (t.id === "speakbtn" && n) { if (speaking === n.id) stopSpeak(); else speak(n); renderViewer(); return; }
@@ -754,7 +882,7 @@ document.addEventListener("click", async (e) => {
   if (t.id === "keyforget") { ls.del("gemini-key"); ls.del("gemini-model"); renderKey(); toast("Clave quitada"); return; }
   if (t.id === "addsubj") { $("newsubj").hidden = false; $("subjname").focus(); return; }
   if (t.id === "cancelsubj") { $("newsubj").hidden = true; return; }
-  if (t.dataset.id) { stopSpeak(); openId = t.dataset.id; confirming = false; view = "apunte"; renderList(); renderViewer(); return; }
+  if (t.dataset.id) { stopSpeak(); vStop(); openId = t.dataset.id; confirming = false; view = "apunte"; renderList(); renderViewer(); return; }
   if (t.id === "delbtn") { confirming = true; renderConfirm(); return; }
   if (t.id === "nodel") { confirming = false; renderConfirm(); return; }
   if (t.id === "yesdel") {

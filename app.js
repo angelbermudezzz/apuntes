@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2026-10-20c";
+const APP_VERSION = "2026-10-20d";
 
 // ---------- Almacenamiento (IndexedDB, con memoria como respaldo) ----------
 const mem = { subjects: [], notes: [] };
@@ -26,21 +26,24 @@ function all(store) {
     catch (e) { res([]); }
   });
 }
-function put(store, obj) {
+// raw = viene de la sincronización: se guarda tal cual, sin marcarlo como cambio nuevo.
+function put(store, obj, raw) {
+  if (!raw) { obj.updated = Date.now(); if (typeof syncSoon === "function") syncSoon(); }
   if (!db) { mem[store] = mem[store].filter(x => x.id !== obj.id).concat(obj); return Promise.resolve(); }
   return new Promise((res, rej) => {
     try { const t = db.transaction(store, "readwrite"); t.objectStore(store).put(obj); t.oncomplete = res; t.onerror = () => rej(t.error); }
     catch (e) { rej(e); }
   });
 }
-function del(store, id) {
+function del(store, id, raw) {
+  if (!raw && typeof tomb === "function") { tomb(store === "notes" ? "note" : "subject", id); if (store === "notes") tomb("file", id); }
   if (!db) { mem[store] = mem[store].filter(x => x.id !== id); return Promise.resolve(); }
   return new Promise((res) => {
     try { const t = db.transaction(store, "readwrite"); t.objectStore(store).delete(id); t.oncomplete = res; t.onerror = res; }
     catch (e) { res(); }
   });
 }
-const saveNote = (n) => { if (!notes.includes(n)) return Promise.resolve(); n.updated = Date.now(); return put("notes", n).catch(() => toast("No se pudo guardar. Puede que el móvil no tenga espacio.")); };
+const saveNote = (n) => { if (!notes.includes(n)) return Promise.resolve(); return put("notes", n).catch(() => toast("No se pudo guardar. Puede que el móvil no tenga espacio.")); };
 const ls = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return ls.m[k] || null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { ls.m[k] = v; } },
@@ -484,7 +487,7 @@ function renderTop() {
   $("duecount").textContent = due;
   $("reviewbtn").setAttribute("aria-label", `Repasar: ${due} tarjeta${due === 1 ? "" : "s"} para hoy`);
   $("keystatus").textContent = has ? "Conectada: hay una clave guardada en este móvil." : "Todavía no hay ninguna clave guardada. Sin ella se pueden ver los apuntes, pero no crear resúmenes ni tests nuevos.";
-  $("keylink").disabled = !has; $("keyforget").disabled = !has;
+  $("keylink").disabled = !has && !syncCfg(); $("keyforget").disabled = !has;
   $("keysteps").hidden = has;
   $("welcome").hidden = !!ls.get("bienvenida-vista");
   $("welcomekey").textContent = has ? "Ya está todo conectado. ¡A estudiar!" : "Falta conectar Gemini. Copia el enlace que te han mandado por WhatsApp y pulsa «Pegar enlace».";
@@ -496,6 +499,7 @@ function renderTop() {
   const show = own >= 3 && Date.now() - last > 14 * DAY && Date.now() > snooze;
   $("backupbanner").hidden = !show;
   if (show) $("backuptext").textContent = last ? `Hace ${Math.floor((Date.now() - last) / DAY)} días que no guardas una copia de tus apuntes.` : "Ya tienes varios apuntes: guarda una copia por si cambias de móvil.";
+  renderToday();
 }
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const installed = () => navigator.standalone || window.matchMedia("(display-mode: standalone)").matches;
@@ -601,6 +605,11 @@ function renderSubjTools() {
       <input type="text" id="renameinput" value="${esc(s.name)}" maxlength="40" aria-label="Nuevo nombre de la asignatura">
       <button class="primary" type="submit">Guardar nombre</button><button class="ghost" type="button" id="subjcancel">Cancelar</button></form>`;
     $("renameinput").focus();
+  } else if (subjMode === "exam") {
+    box.innerHTML = `<form class="inline-form" id="examdateform">
+      <label class="note" for="examdate">Examen de ${esc(s.name)}</label>
+      <input type="date" id="examdate" value="${esc(s.exam || "")}" min="${new Date().toISOString().slice(0, 10)}">
+      <button class="primary" type="submit">Guardar</button>${s.exam ? `<button class="ghost" type="button" id="examclear">Quitar fecha</button>` : ""}<button class="ghost" type="button" id="subjcancel">Cancelar</button></form>`;
   } else if (subjMode === "delete") {
     box.innerHTML = `<div class="confirm"><span>¿Borrar «${esc(s.name)}»${sn.length ? (sn.length > 1 ? ` y sus ${sn.length} apuntes` : " y su apunte") : ""}? No se puede deshacer.</span>
       <button class="danger" id="subjyes">Sí, borrar</button><button class="ghost" id="subjcancel">Cancelar</button></div>`;
@@ -608,6 +617,8 @@ function renderSubjTools() {
     box.innerHTML = `<div class="actions">
       <button class="small primary" id="examgo" ${pool < 4 ? "disabled" : ""}>Examen de ${esc(s.name)}</button>
       <button class="small" id="subjreview" ${due ? "" : "disabled"}>Repasar ${esc(s.name)} (${due})</button>
+      ${sn.some(n => n.missed?.length) ? `<button class="small" id="subjmissed">Mis fallos</button>` : ""}
+      <button class="small" id="subjexam">${s.exam && daysTo(s.exam) >= 0 ? `Examen ${whenText(daysTo(s.exam))}` : "Fecha de examen"}</button>
       <button class="small ghost" id="subjrename">Renombrar</button>
       <button class="small danger" id="subjdel">Borrar asignatura</button></div>
       ${pool < 4 && sn.length ? `<p class="note" style="margin-top:6px">Para el examen de la asignatura, haz antes algún test en sus apuntes.</p>` : ""}`;
@@ -757,6 +768,7 @@ function quizHtml(qs, ans, prefix, showFrom) {
 }
 const verdict = (r, t) => r === t ? "¡Perfecto! Te lo sabes." : r / t >= 0.8 ? "¡Muy bien! Casi perfecto." : r / t >= 0.5 ? "Bien, pero repasa las que has fallado." : "Toca repasar este tema otra vez.";
 function renderQuiz(n) {
+  if (quizKind === "desarrollo") return renderOpen(n);
   const c = $("content");
   const b = isBusyWith(n, "quiz");
   const cntBtn = (k) => `<button class="tab small" data-qc="${k}" aria-pressed="${quizCount === k}">${k}</button>`;
@@ -771,6 +783,7 @@ function renderQuiz(n) {
     saveNote(n); renderList(); renderSubjTools();
   }
   c.innerHTML = `<div class="stack">
+    <div class="actions"><button class="tab small" data-qk="test" aria-pressed="true">Tipo test</button><button class="tab small" data-qk="desarrollo" aria-pressed="false">Para desarrollar</button></div>
     <div class="actions"><span class="note">Preguntas:</span>${cntBtn(5)}${cntBtn(10)}${cntBtn(15)}
       <button class="primary" id="goquiz" ${busy ? "disabled" : ""}>${q.length ? "Hacer otro test" : "Hacer test"}</button></div>
     ${errHtml(n, "quiz")}
@@ -1264,11 +1277,13 @@ function gradeCurrent(g) {
 
 // ---------- Examen de la asignatura ----------
 let ex = null; // { subject, questions, answers, recorded }
-function startExam(subjectId) {
+function startExam(subjectId, missedOnly) {
   stopSpeak(); vStop();
-  const pool = notes.filter(n => n.subject === subjectId).flatMap(n => (n.quiz?.questions || []).map(q => ({ ...q, from: n.name })));
-  if (pool.length < 4) { toast("Haz antes algún test en los apuntes de esta asignatura."); return; }
-  ex = { subject: subjectId, questions: shuffle(pool).slice(0, 20), answers: [] };
+  const scope = notes.filter(n => subjectId === "all" || n.subject === subjectId);
+  const pool = scope.flatMap(n => ((missedOnly ? n.missed : n.quiz?.questions) || []).map(q => ({ ...q, from: n.name, noteId: n.id })));
+  if (missedOnly && !pool.length) { toast("No tienes preguntas falladas. ¡Bien!"); return; }
+  if (!missedOnly && pool.length < 4) { toast("Haz antes algún test en los apuntes de esta asignatura."); return; }
+  ex = { subject: subjectId, missed: !!missedOnly, questions: shuffle(pool).slice(0, missedOnly ? 30 : 20), answers: [] };
   mode = "exam"; renderViewer(); renderList(); showViewer();
 }
 function renderExam() {
@@ -1277,13 +1292,122 @@ function renderExam() {
   const done = a.filter(x => x !== undefined).length;
   const right = q.reduce((s, x, i) => s + (a[i] === x.answer ? 1 : 0), 0);
   const nota = (10 * right / q.length).toFixed(1).replace(".", ",");
-  v.innerHTML = `<div class="vhead"><div><h2>Examen de ${esc(sname(ex.subject))}</h2>
-      <p class="sub">${q.length} preguntas mezcladas de los tests de todos sus apuntes.</p></div>
+  v.innerHTML = `<div class="vhead"><div><h2>${ex.missed ? "Repaso de fallos" + (ex.subject === "all" ? "" : ": " + esc(sname(ex.subject))) : "Examen de " + esc(sname(ex.subject))}</h2>
+      <p class="sub">${ex.missed ? "Las preguntas que fallaste. Si aciertas, dejan de estar en tu lista de fallos." : `${q.length} preguntas mezcladas de los tests de todos sus apuntes.`}</p></div>
       <div class="actions"><button class="small" id="endexam">Salir</button></div></div>
     <div class="actions"><span class="score">${right} de ${q.length}</span><span class="note">${done < q.length ? `Te quedan ${q.length - done}` : ""}</span></div>
     ${quizHtml(q, a, "x", true)}
     ${done === q.length ? `<div class="result"><b>Tu nota: ${nota} sobre 10.</b><span>${verdict(right, q.length)}</span>
-      <div class="actions"><button class="small primary" id="examagain">Otro examen</button><button class="small" id="endexam2">Volver</button></div></div>` : ""}`;
+      <div class="actions"><button class="small primary" id="examagain">${ex.missed ? "Otra vez" : "Otro examen"}</button><button class="small" id="endexam2">Volver</button></div></div>` : ""}`;
+}
+
+// ---------- Hoy: qué estudiar, exámenes y racha ----------
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
+const daysTo = (date) => Math.round((new Date(date + "T00:00:00").getTime() - startOfToday()) / DAY);
+const whenText = (d) => d === 0 ? "hoy" : d === 1 ? "mañana" : `en ${d} días`;
+const upcomingExams = () => subjects.filter(s => s.exam && daysTo(s.exam) >= 0).sort((a, b) => daysTo(a.exam) - daysTo(b.exam));
+function suggestions() {
+  const exams = upcomingExams();
+  const urgency = (n) => { const s = subjects.find(x => x.id === n.subject); const d = s?.exam ? daysTo(s.exam) : -1; return d >= 0 && d <= 21 ? (22 - d) / 4 : 0; };
+  return notes.filter(n => !n.example || notes.length === 1).map(n => {
+    const why = []; let score = urgency(n);
+    const due = reviewQueue([n]).length;
+    if (due) { score += Math.min(4, due / 3); why.push(`${due} tarjeta${due > 1 ? "s" : ""}`); }
+    if (n.quizStats) { const r = n.quizStats.best / n.quizStats.total; if (r < 0.7) { score += (1 - r) * 5; why.push(`sacaste ${n.quizStats.best}/${n.quizStats.total}`); } }
+    else { score += 2; why.push("sin test"); }
+    if (n.missed?.length) { score += Math.min(3, n.missed.length / 2); why.push(`${n.missed.length} fallo${n.missed.length > 1 ? "s" : ""}`); }
+    if (!n.summary) { score += 0.5; }
+    if (urgency(n)) why.unshift("examen cerca");
+    return { n, score, why };
+  }).filter(x => x.why.length).sort((a, b) => b.score - a.score).slice(0, 3);
+}
+function renderToday() {
+  const box = $("today"); if (!box) return;
+  if (!notes.length) { box.hidden = true; return; }
+  box.hidden = false;
+  const due = reviewQueue(notes).length, sk = streak();
+  const missed = notes.reduce((k, n) => k + (n.missed?.length || 0), 0);
+  const exams = upcomingExams().slice(0, 4), sug = suggestions();
+  const date = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+  box.innerHTML = `<div class="row" style="justify-content:space-between;align-items:baseline"><h2>Hoy</h2><span class="note">${date}${sk ? ` · 🔥 ${sk} día${sk > 1 ? "s" : ""}` : ""}</span></div>
+    <div class="todaygrid">
+      <button class="tile" id="todayreview" ${due ? "" : "disabled"}><b>${due}</b><span>${due === 1 ? "tarjeta para hoy" : "tarjetas para hoy"}</span></button>
+      <button class="tile" id="todaymissed" ${missed ? "" : "disabled"}><b>${missed}</b><span>${missed === 1 ? "pregunta fallada" : "preguntas falladas"}</span></button>
+    </div>
+    ${exams.length ? `<div class="exams">${exams.map(s => { const d = daysTo(s.exam); return `<button class="exam ${d <= 3 ? "soon" : d <= 10 ? "near" : ""}" data-s="${esc(s.id)}"><span class="dd">${d === 0 ? "¡Hoy!" : d}</span><span><b>${esc(s.name)}</b><small>${d === 0 ? "examen hoy" : d === 1 ? "día para el examen" : "días para el examen"} · ${new Date(s.exam + "T00:00").toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" })}</small></span></button>`; }).join("")}</div>`
+      : `<p class="note">Pon la fecha de tus exámenes en cada asignatura (botón «Fecha de examen») y aquí verás la cuenta atrás.</p>`}
+    ${sug.length ? `<p class="note">Te sugiero repasar:</p><div class="sugg">${sug.map(x => `<button class="item mini" data-id="${esc(x.n.id)}"><span class="name">${esc(x.n.name)}</span><span class="meta">${esc(sname(x.n.subject))} · ${esc(x.why.join(", "))}</span></button>`).join("")}</div>` : ""}`;
+}
+
+// ---------- Fallos: las preguntas de test que has fallado ----------
+const qKey = (q) => q.question.trim().toLowerCase();
+function markAnswer(n, q, right) {
+  if (!n) return;
+  const k = qKey(q);
+  const had = (n.missed || []).some(m => qKey(m) === k);
+  if (right && had) n.missed = n.missed.filter(m => qKey(m) !== k);
+  else if (!right && !had) { const { from, noteId, ...clean } = q; n.missed = [...(n.missed || []), clean].slice(-100); }
+  else return;
+  saveNote(n);
+}
+
+// ---------- Preguntas para desarrollar (respuesta escrita corregida por Gemini) ----------
+const OPEN_SCHEMA = {
+  type: "OBJECT",
+  properties: { questions: { type: "ARRAY", items: { type: "OBJECT", properties: { question: { type: "STRING" }, key_points: { type: "ARRAY", items: { type: "STRING" } } }, required: ["question", "key_points"] } } },
+  required: ["questions"]
+};
+const OPEN_PROMPT = "Crea 4 PREGUNTAS PARA DESARROLLAR sobre estos apuntes, como las de un examen escrito: que pidan explicar, comparar, justificar o poner ejemplos (no preguntas de sí o no). Para cada una, \"key_points\" son de 2 a 5 ideas que una respuesta completa debe incluir, según los apuntes.";
+const GRADE_SCHEMA = {
+  type: "OBJECT",
+  properties: { score: { type: "NUMBER" }, good: { type: "STRING" }, missing: { type: "ARRAY", items: { type: "STRING" } }, tip: { type: "STRING" } },
+  required: ["score", "good", "missing", "tip"]
+};
+const gradePrompt = (q, answer) => `Corrige la respuesta de Erika a esta pregunta de examen, usando los apuntes como referencia.
+Pregunta: ${q.question}
+Ideas que debería incluir: ${q.key_points.join("; ")}
+Respuesta de Erika: """${answer}"""
+"score" es la nota de 0 a 10 (puede llevar decimales, sé justo pero no durísimo; valora las ideas aunque estén dichas con otras palabras). "good" es una frase que diga lo que ha hecho bien. "missing" son las ideas importantes que faltan o que están mal (vacío si no falta nada). "tip" es un consejo corto para mejorar la respuesta. Habla directamente a Erika, en tono cercano.`;
+let quizKind = "test";
+function renderOpen(n) {
+  const c = $("content");
+  const b = isBusyWith(n, "abiertas");
+  const qs = n.open?.questions || [];
+  const kindBtn = (k, l) => `<button class="tab small" data-qk="${k}" aria-pressed="${quizKind === k}">${l}</button>`;
+  c.innerHTML = `<div class="stack">
+    <div class="actions">${kindBtn("test", "Tipo test")}${kindBtn("desarrollo", "Para desarrollar")}</div>
+    <div class="actions"><button class="${qs.length ? "" : "primary"}" id="goopen" ${busy ? "disabled" : ""}>${qs.length ? "Otras preguntas" : "Hacer preguntas"}</button></div>
+    ${errHtml(n, "abiertas")}
+    ${b ? busyHtml(busy.grading !== undefined ? "Gemini está corrigiendo tu respuesta…" : "Gemini está preparando las preguntas…") : ""}
+    ${qs.length ? `<ol class="qlist">${qs.map((q, i) => {
+        const r = q.result;
+        return `<li class="q"><p><span class="num">${i + 1}.</span>${esc(q.question)}</p>
+          ${r ? `<div class="answered">${esc(q.answer)}</div>
+            <div class="grade ${r.score >= 7 ? "good" : r.score >= 5 ? "mid" : "low"}"><b>${String(Math.round(r.score * 10) / 10).replace(".", ",")} / 10</b>
+              <p>${esc(r.good)}</p>
+              ${r.missing?.length ? `<p class="note">Te faltó:</p><ul>${r.missing.map(m => `<li>${esc(m)}</li>`).join("")}</ul>` : ""}
+              ${r.tip ? `<p class="note">Consejo: ${esc(r.tip)}</p>` : ""}
+              <details><summary>Ver lo que debía incluir</summary><ul>${q.key_points.map(p => `<li>${esc(p)}</li>`).join("")}</ul></details>
+              <div class="actions"><button class="small ghost" data-reopen="${i}">Intentarlo otra vez</button></div></div>`
+          : `<form class="stack openform" data-oq="${i}"><textarea rows="4" placeholder="Escribe tu respuesta como en el examen…" aria-label="Tu respuesta">${esc(q.draft || "")}</textarea>
+              <div class="actions"><button class="small primary" type="submit" ${busy ? "disabled" : ""}>Corregir</button></div></form>`}
+        </li>`;
+      }).join("")}</ol>` : (b ? "" : `<p class="note">Gemini te hace preguntas como las de un examen escrito. Respondes con tus palabras y te corrige: nota, lo que has hecho bien y lo que te faltó.</p>${noKeyHint()}`)}
+  </div>`;
+}
+async function gradeOpen(n, i, answer) {
+  answer = answer.trim();
+  if (answer.length < 3) { toast("Escribe tu respuesta primero"); return; }
+  if (busy || !ensureKey()) return;
+  const q = n.open.questions[i]; q.answer = answer; q.draft = answer;
+  busy = { id: n.id, what: "abiertas", grading: i }; lastError = null; refreshIfOpen(n.id);
+  try {
+    const r = parseJSON(await generate(n, { prompt: gradePrompt(q, answer), schema: GRADE_SCHEMA, system: TEACHER }), "la corrección");
+    q.result = { score: Math.max(0, Math.min(10, +r.score || 0)), good: r.good || "", missing: r.missing || [], tip: r.tip || "" };
+    await saveNote(n);
+  } catch (e) {
+    lastError = { id: n.id, what: "abiertas", msg: e instanceof AIError ? e.message : "Algo ha fallado: " + (e.message || e) };
+  } finally { busy = null; refreshIfOpen(n.id); }
 }
 
 // ---------- Acciones ----------
@@ -1293,7 +1417,7 @@ function ensureKey() {
   openSettings(); $("keyinput").focus(); toast("Primero conecta Gemini");
   return false;
 }
-function openSettings() { $("settings").hidden = false; renderPrefs(); renderStorage(); $("settings").scrollIntoView({ behavior: "smooth", block: "start" }); }
+function openSettings() { $("settings").hidden = false; renderPrefs(); renderStorage(); renderSyncStatus(); $("settings").scrollIntoView({ behavior: "smooth", block: "start" }); }
 async function addFiles(files) {
   if (!files.length) return;
   let subject = $("target").value;
@@ -1316,6 +1440,11 @@ async function runAI(n, what) {
     if (what === "resumen") {
       const text = await generate(n, { prompt: SUMMARY_PROMPTS[sumMode], system: TEACHER, onText: streamTo(n, "resumen") });
       n.summary = { mode: sumMode, text, at: Date.now() };
+    } else if (what === "abiertas") {
+      const data = parseJSON(await generate(n, { prompt: OPEN_PROMPT, schema: OPEN_SCHEMA, system: TEACHER }), "las preguntas");
+      const qs = (data.questions || []).filter(q => q.question && Array.isArray(q.key_points));
+      if (!qs.length) throw new AIError("Gemini no ha podido sacar preguntas de este apunte. Vuelve a intentarlo.");
+      n.open = { questions: qs, at: Date.now() };
     } else if (what === "podcast") {
       const text = await generate(n, { prompt: PODCAST_PROMPT, system: TEACHER, onText: streamTo(n, "podcast", "audio") });
       n.podcast = { text, at: Date.now() };
@@ -1344,7 +1473,7 @@ async function runAI(n, what) {
       answers[n.id] = []; recorded[n.id] = false;
     }
     await saveNote(n);
-    toast({ podcast: "Explicación lista", resumen: "Resumen listo", quiz: "Test listo", mapa: "Mapa listo", video: "Vídeo listo", tarjetas: "Tarjetas listas" }[what]);
+    toast({ abiertas: "Preguntas listas", podcast: "Explicación lista", resumen: "Resumen listo", quiz: "Test listo", mapa: "Mapa listo", video: "Vídeo listo", tarjetas: "Tarjetas listas" }[what]);
   } catch (e) {
     lastError = { id: n.id, what, msg: e instanceof AIError ? e.message : "Algo ha fallado: " + (e.message || e) };
   } finally {
@@ -1424,6 +1553,177 @@ async function applyRestore() {
   mode = "note"; current = "all"; render(); toast(count ? `${count} apunte${count > 1 ? "s" : ""} recuperado${count > 1 ? "s" : ""}` : "Ya tenías todo lo de esa copia");
 }
 
+// ---------- Sincronización entre dispositivos (Supabase gratis, opcional) ----------
+// Cada apunte, asignatura y archivo se sube como una fila; gana la versión cambiada más tarde.
+const sync = { busy: false, timer: null, error: "" };
+const syncCfg = () => { const c = readJSON("sync", null); return c && c.url && c.key && c.vault ? c : null; };
+const syncOn = () => !!syncCfg() && ls.get("sync-on") === "1";
+function newVault() { const a = new Uint8Array(24); crypto.getRandomValues(a); return btoa(String.fromCharCode(...a)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+async function rpc(fn, body, cfg = syncCfg()) {
+  let r;
+  try {
+    r = await fetch(cfg.url.replace(/\/+$/, "") + "/rest/v1/rpc/" + fn, {
+      method: "POST", headers: { "Content-Type": "application/json", apikey: cfg.key, Authorization: "Bearer " + cfg.key }, body: JSON.stringify(body)
+    });
+  } catch (e) { throw new Error(navigator.onLine === false ? "Sin internet: se sincronizará al volver la conexión." : "No se pudo conectar con Supabase. Revisa la dirección del proyecto."); }
+  if (!r.ok) {
+    let m = ""; try { m = (await r.json()).message || ""; } catch (e) {}
+    if (r.status === 404 || /function|schema cache/i.test(m)) throw new Error("Falta preparar Supabase: pega el código SQL en el SQL Editor y pulsa Run.");
+    if (r.status === 401 || r.status === 403) throw new Error("Supabase no acepta la clave. Copia la «anon public» (o «publishable») de Project Settings → API.");
+    throw new Error("Supabase ha dado un error (" + r.status + "). " + m);
+  }
+  const txt = await r.text();
+  return txt ? JSON.parse(txt) : null;
+}
+function syncSoon() { if (!syncOn()) return; clearTimeout(sync.timer); sync.timer = setTimeout(syncNow, 2500); }
+function tomb(kind, id) {
+  if (!syncCfg()) return;
+  const t = readJSON("sync-borrados", []).filter(x => !(x.kind === kind && x.id === id));
+  t.push({ kind, id, updated: Date.now() });
+  ls.set("sync-borrados", JSON.stringify(t)); syncSoon();
+}
+const stamp = (x) => x.updated || x.added || x.created || 1;
+async function syncPush(vault) {
+  const since = +ls.get("sync-subido") || 0, started = Date.now();
+  const items = [];
+  for (const s of subjects) if (stamp(s) > since) items.push({ kind: "subject", id: s.id, data: s, updated: stamp(s) });
+  for (const n of notes) if (stamp(n) > since) { const { blob, ...rest } = n; items.push({ kind: "note", id: n.id, data: rest, updated: stamp(n) }); }
+  const tombs = readJSON("sync-borrados", []);
+  for (const t of tombs) items.push({ kind: t.kind, id: t.id, updated: t.updated, deleted: true });
+  const days = readJSON("dias-repaso", []);
+  if (days.length !== +ls.get("sync-dias")) items.push({ kind: "meta", id: "dias-repaso", data: days, updated: started });
+  for (let i = 0; i < items.length; i += 40) await rpc("sync_push", { p_vault: vault, p_items: items.slice(i, i + 40) });
+  ls.set("sync-dias", String(days.length));
+  ls.set("sync-borrados", JSON.stringify(readJSON("sync-borrados", []).filter(t => t.updated > started)));
+  // Los archivos (PDF, fotos…) van uno a uno y solo una vez.
+  const sent = new Set(readJSON("sync-archivos", []));
+  for (const n of notes) {
+    if (sent.has(n.id) || !n.blob?.size) continue;
+    if (n.blob.size > 15 * 1048576) continue; // demasiado grande para subirlo de una vez
+    await rpc("sync_push", { p_vault: vault, p_items: [{ kind: "file", id: n.id, file: await blobToDataURL(n.blob), updated: n.added || 1 }] });
+    sent.add(n.id); ls.set("sync-archivos", JSON.stringify([...sent]));
+  }
+  ls.set("sync-subido", String(started));
+}
+async function fetchFile(vault, id) {
+  const u = await rpc("sync_file", { p_vault: vault, p_id: id });
+  return u ? dataURLToBlob(u) : null;
+}
+async function syncPull(vault) {
+  const full = Date.now() - (+ls.get("sync-completo") || 0) > DAY; // una vez al día se repasa todo, por si se escapó algo
+  let since = full ? 0 : (+ls.get("sync-cursor") || 0), max = since;
+  const changed = new Set();
+  const sent = new Set(readJSON("sync-archivos", []));
+  for (;;) {
+    const rows = await rpc("sync_pull", { p_vault: vault, p_since: since }) || [];
+    for (const r of rows) {
+      max = Math.max(max, r.srv);
+      if (r.kind === "subject") {
+        const i = subjects.findIndex(s => s.id === r.id), loc = subjects[i];
+        if (r.deleted) { if (loc && stamp(loc) <= r.updated) { await del("subjects", r.id, true); subjects.splice(i, 1); changed.add("*"); } continue; }
+        if (!loc || stamp(loc) < r.updated) { await put("subjects", r.data, true); if (loc) subjects[i] = r.data; else subjects.push(r.data); changed.add("*"); }
+      } else if (r.kind === "note") {
+        const i = notes.findIndex(n => n.id === r.id), loc = notes[i];
+        if (r.deleted) { if (loc && stamp(loc) <= r.updated) { await del("notes", r.id, true); notes.splice(i, 1); changed.add(r.id); } continue; }
+        if (loc && stamp(loc) >= r.updated) continue;
+        const n = { ...r.data, blob: loc?.blob?.size ? loc.blob : null };
+        if (!n.blob) { n.blob = await fetchFile(vault, r.id).catch(() => null) || new Blob([]); if (n.blob.size) sent.add(r.id); }
+        await put("notes", n, true);
+        if (loc) notes[i] = n; else notes.push(n);
+        changed.add(r.id);
+      } else if (r.kind === "file" && !r.deleted) {
+        sent.add(r.id); // ya está en la nube: no hace falta volver a subirlo
+        const loc = notes.find(n => n.id === r.id);
+        if (loc && !loc.blob?.size) { const b = await fetchFile(vault, r.id).catch(() => null); if (b) { loc.blob = b; await put("notes", loc, true); changed.add(r.id); } }
+      } else if (r.kind === "meta" && r.id === "dias-repaso" && Array.isArray(r.data)) {
+        const mine = readJSON("dias-repaso", []);
+        const merged = [...new Set([...mine, ...r.data])].sort((a, b) => new Date(a) - new Date(b)).slice(-400);
+        if (merged.length !== mine.length) { ls.set("dias-repaso", JSON.stringify(merged)); changed.add("*"); }
+      }
+    }
+    if (rows.length < 500) break;
+    since = rows[rows.length - 1].srv - 1;
+  }
+  ls.set("sync-archivos", JSON.stringify([...sent]));
+  ls.set("sync-cursor", String(max));
+  if (full) ls.set("sync-completo", String(Date.now()));
+  return changed;
+}
+async function syncNow(manual) {
+  const cfg = syncCfg();
+  if (!syncOn() || sync.busy) return;
+  if (busy) { syncSoon(); return; } // mientras Gemini trabaja no se tocan los apuntes
+  sync.busy = true; renderSyncStatus();
+  try {
+    const changed = await syncPull(cfg.vault);
+    await syncPush(cfg.vault);
+    ls.set("sync-ultima", String(Date.now())); sync.error = "";
+    if (changed.size) {
+      subjects.sort((a, b) => a.created - b.created); renderToday();
+      if (!notes.some(n => n.id === openId)) { openId = null; if (mode === "note") changed.add(openId); }
+      renderTop(); renderTabs(); renderList();
+      const typing = /INPUT|TEXTAREA/.test(document.activeElement?.tagName || "");
+      if (mode === "note" && (changed.has(openId) || changed.has(null)) && !typing && !rd.playing && !vp.playing) renderViewer();
+    }
+    if (manual) toast("Sincronizado");
+  } catch (e) {
+    sync.error = e.message;
+    if (manual) toast(e.message);
+  } finally { sync.busy = false; renderSyncStatus(); }
+}
+function agoText(t) {
+  const s = Math.round((Date.now() - t) / 1000);
+  return s < 60 ? "hace un momento" : s < 3600 ? `hace ${Math.round(s / 60)} min` : s < DAY / 1000 ? `hace ${Math.round(s / 3600)} h` : "el " + fmtDate(t);
+}
+function renderSyncStatus() {
+  const box = $("syncbox"); if (!box) return;
+  const cfg = syncCfg(), on = syncOn(), last = +ls.get("sync-ultima") || 0;
+  if (!cfg) {
+    box.innerHTML = `<p class="note">Para tener los mismos apuntes en el móvil y en el ordenador. Es gratis y solo hay que prepararlo una vez:</p>
+      <ol class="note">
+        <li>Crea una cuenta en <a href="https://supabase.com/dashboard" target="_blank" rel="noopener">supabase.com</a> y pulsa «New project» (plan Free).</li>
+        <li>Entra en «SQL Editor», pega <a href="supabase.sql" target="_blank" rel="noopener">este código</a> y pulsa «Run».</li>
+        <li>En «Project Settings → API» copia la «Project URL» y la clave «anon public» (o «publishable») y pégalas aquí.</li>
+      </ol>
+      <form class="stack" id="syncform">
+        <input type="url" id="syncurl" placeholder="https://xxxx.supabase.co" autocomplete="off" aria-label="Project URL de Supabase">
+        <input type="text" id="synckey" placeholder="Clave anon public" autocomplete="off" aria-label="Clave anon de Supabase">
+        <div class="actions"><button class="primary small" type="submit">Conectar</button></div>
+      </form>`;
+    return;
+  }
+  const state = sync.busy ? "Sincronizando…" : sync.error ? sync.error : on ? (last ? `Sincronizado ${agoText(last)}.` : "Conectado.") : "Configurada, pero este dispositivo no se sincroniza.";
+  box.innerHTML = `<p class="note ${sync.error ? "errtext" : ""}">${esc(state)}</p>
+    <div class="actions">
+      ${on ? `<button class="small primary" id="syncnow" ${sync.busy ? "disabled" : ""}>Sincronizar ahora</button><button class="small ghost" id="syncoff">Desactivar aquí</button>`
+        : `<button class="small primary" id="syncon">Activar en este dispositivo</button>`}
+      <button class="small danger ghost" id="syncforget">Olvidar configuración</button>
+    </div>
+    <p class="note">El enlace de «Copiar enlace para otro móvil» ya lleva la sincronización: al abrirlo en otro móvil o en el ordenador, se conecta solo y descarga los apuntes.${on ? "" : " Al activarla aquí se suben también los apuntes de este dispositivo."}</p>`;
+}
+async function connectSync(url, key) {
+  url = url.trim().replace(/\/+$/, ""); key = key.trim();
+  if (!/^https:\/\/.+|^http:\/\/localhost/.test(url) || key.length < 20) { toast("Revisa la dirección y la clave"); return; }
+  const cfg = { url, key, vault: syncCfg()?.vault || newVault() };
+  try { await rpc("sync_pull", { p_vault: cfg.vault, p_since: Date.now() }, cfg); }
+  catch (e) { sync.error = ""; toast(e.message); return; }
+  ls.set("sync", JSON.stringify(cfg));
+  renderSyncStatus(); toast("Supabase conectado");
+}
+function syncLinkPart() {
+  const c = syncCfg(); if (!c) return "";
+  return "&sync=" + btoa(JSON.stringify(c)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function syncFromText(t) {
+  const m = String(t || "").match(/sync=([\w-]+)/); if (!m) return false;
+  try {
+    const c = JSON.parse(atob(m[1].replace(/-/g, "+").replace(/_/g, "/")));
+    if (!c.url || !c.key || !c.vault) return false;
+    ls.set("sync", JSON.stringify(c)); ls.set("sync-on", "1");
+    return true;
+  } catch (e) { return false; }
+}
+
 // ---------- Enlace con la clave ----------
 function keyFromText(t) {
   const m = String(t || "").match(/AIza[\w-]{20,}/); // vale la clave sola o cualquier enlace que la lleve
@@ -1431,20 +1731,26 @@ function keyFromText(t) {
 }
 function saveKey(k) { ls.set("gemini-key", k); ls.del("gemini-models"); }
 function readKeyFromLink() {
-  if (!/clave=/.test(location.hash + location.search)) return;
-  const k = keyFromText(decodeURIComponent(location.hash + location.search));
+  const h = location.hash + location.search;
+  if (!/clave=|sync=/.test(h)) return;
+  const k = keyFromText(decodeURIComponent(h));
+  const s = syncFromText(h);
   history.replaceState(null, "", location.pathname);
-  if (k) { saveKey(k); setTimeout(() => toast("Gemini conectado. ¡Listo para estudiar!"), 600); }
+  if (s && !ls.get("ejemplo-creado")) ls.set("ejemplo-creado", "1"); // los apuntes llegan de la nube: no hace falta el ejemplo
+  if (k) saveKey(k);
+  if (k || s) setTimeout(() => toast(s ? "Conectado. Descargando tus apuntes…" : "Gemini conectado. ¡Listo para estudiar!"), 600);
 }
 async function pasteKey() {
   let text = "";
   try { text = await navigator.clipboard.readText(); } catch (e) {}
   const k = keyFromText(text);
-  if (k) { saveKey(k); renderTop(); toast("Gemini conectado. ¡Listo para estudiar!"); }
+  const s = syncFromText(text);
+  if (k) saveKey(k);
+  if (k || s) { renderTop(); renderSyncStatus(); toast(s ? "Conectado. Descargando tus apuntes…" : "Gemini conectado. ¡Listo para estudiar!"); if (s) syncNow(); }
   else { openSettings(); $("keyinput").focus(); toast("No he encontrado el enlace copiado. Pégalo aquí a mano."); }
 }
 async function copyKeyLink() {
-  const link = location.origin + location.pathname + "#clave=" + encodeURIComponent(ls.get("gemini-key") || "");
+  const link = location.origin + location.pathname + "#clave=" + encodeURIComponent(ls.get("gemini-key") || "") + syncLinkPart();
   try { await navigator.clipboard.writeText(link); toast("Enlace copiado. Mándaselo por WhatsApp."); }
   catch (e) {
     $("restoreconfirm").innerHTML = "";
@@ -1470,6 +1776,14 @@ document.addEventListener("click", async (e) => {
     if (mode === "note" && (view === "tarjetas" || view === "quiz" || view === "resumen")) renderViewer();
     return;
   }
+  if (t.id === "syncnow") { syncNow(true); return; }
+  if (t.id === "syncon") { ls.set("sync-on", "1"); renderSyncStatus(); syncNow(true); return; }
+  if (t.id === "syncoff") { ls.set("sync-on", "0"); renderSyncStatus(); return; }
+  if (t.id === "syncforget") {
+    if (!t.dataset.sure) { t.dataset.sure = "1"; t.textContent = "¿Seguro? Toca otra vez"; return; }
+    ["sync", "sync-on", "sync-subido", "sync-cursor", "sync-archivos", "sync-borrados", "sync-completo", "sync-ultima", "sync-dias"].forEach(k => ls.del(k));
+    renderSyncStatus(); toast("Sincronización quitada de este dispositivo"); return;
+  }
   if (t.id === "voicetest") { sayOnce("Hola Erika, así sonarán tus resúmenes y tus vídeos."); return; }
   // cabecera y ajustes
   if (t.id === "reviewbtn") { startReview(notes, "Repaso de hoy"); return; }
@@ -1488,10 +1802,15 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.s) { current = t.dataset.s; subjMode = null; renderTabs(); renderList(); return; }
   if (t.id === "addsubj") { $("newsubj").hidden = false; $("subjname").focus(); return; }
   if (t.id === "cancelsubj") { $("newsubj").hidden = true; return; }
+  if (t.id === "subjexam") { subjMode = "exam"; renderSubjTools(); return; }
+  if (t.id === "examclear") { const s = subjects.find(x => x.id === current); if (s) { delete s.exam; await put("subjects", s); } subjMode = null; renderSubjTools(); renderToday(); return; }
+  if (t.id === "subjmissed") { startExam(current, true); return; }
+  if (t.id === "todayreview") { startReview(notes, "Repaso de hoy"); return; }
+  if (t.id === "todaymissed") { startExam("all", true); return; }
   if (t.id === "subjrename") { subjMode = "rename"; renderSubjTools(); return; }
   if (t.id === "subjdel") { subjMode = "delete"; renderSubjTools(); return; }
   if (t.id === "subjcancel") { subjMode = null; renderSubjTools(); return; }
-  if (t.id === "examgo" || t.id === "examagain") { startExam(t.id === "examgo" ? current : ex.subject); return; }
+  if (t.id === "examgo" || t.id === "examagain") { startExam(t.id === "examgo" ? current : ex.subject, t.id === "examagain" && ex.missed); return; }
   if (t.id === "subjreview") { startReview(notes.filter(x => x.subject === current), "Repaso de " + sname(current)); return; }
   if (t.id === "subjyes") {
     const id = current;
@@ -1515,7 +1834,12 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.g !== undefined && rs) { gradeCurrent(+t.dataset.g); return; }
   if (t.id === "endreview" || t.id === "endreview2") { rs = null; mode = "note"; renderViewer(); renderList(); renderTop(); return; }
   // examen
-  if (t.dataset.xq !== undefined && ex) { ex.answers[+t.dataset.xq] = +t.dataset.o; renderExam(); return; }
+  if (t.dataset.xq !== undefined && ex) {
+    const i = +t.dataset.xq, q = ex.questions[i];
+    ex.answers[i] = +t.dataset.o;
+    markAnswer(notes.find(x => x.id === q.noteId), q, ex.answers[i] === q.answer);
+    renderExam(); renderToday(); return;
+  }
   if (t.id === "endexam" || t.id === "endexam2") { ex = null; mode = "note"; renderViewer(); renderList(); return; }
   if (!n) return;
   // apunte abierto
@@ -1552,7 +1876,15 @@ document.addEventListener("click", async (e) => {
   if (t.id === "copysum") { try { await navigator.clipboard.writeText(n.summary.text); toast("Resumen copiado"); } catch (err) { toast("No se pudo copiar"); } return; }
   if (t.id === "goquiz" || t.id === "goquiz2") { runAI(n, "quiz"); return; }
   if (t.dataset.qc) { quizCount = +t.dataset.qc; renderViewer(); return; }
-  if (t.dataset.q !== undefined) { (answers[n.id] ||= [])[+t.dataset.q] = +t.dataset.o; renderViewer(); return; }
+  if (t.dataset.q !== undefined) {
+    const i = +t.dataset.q, q = n.quiz.questions[i];
+    (answers[n.id] ||= [])[i] = +t.dataset.o;
+    markAnswer(n, q, +t.dataset.o === q.answer);
+    renderViewer(); renderToday(); return;
+  }
+  if (t.dataset.qk) { quizKind = t.dataset.qk; lastError = null; renderViewer(); return; }
+  if (t.id === "goopen") { runAI(n, "abiertas"); return; }
+  if (t.dataset.reopen !== undefined) { const q = n.open.questions[+t.dataset.reopen]; delete q.result; await saveNote(n); renderViewer(); return; }
   if (t.id === "retry" || t.id === "retry2") { answers[n.id] = []; recorded[n.id] = false; renderViewer(); return; }
   if (t.id === "gocards") { runAI(n, "tarjetas"); return; }
   if (t.dataset.cc) { cardCount = +t.dataset.cc; renderViewer(); return; }
@@ -1584,7 +1916,7 @@ document.addEventListener("change", (e) => {
 });
 document.addEventListener("submit", async (e) => {
   const id = e.target.id;
-  if (["renameform", "editform", "askform", "keyform", "newsubj", "cardeditform", "cardaddform"].includes(id)) e.preventDefault(); else return;
+  if (["renameform", "editform", "askform", "keyform", "newsubj", "cardeditform", "cardaddform", "syncform", "examdateform"].includes(id) || e.target.classList.contains("openform")) e.preventDefault(); else return;
   const n = notes.find(x => x.id === openId);
   if (id === "keyform") {
     const raw = $("keyinput").value.trim(); if (!raw) return;
@@ -1604,6 +1936,14 @@ document.addEventListener("submit", async (e) => {
     const name = $("editname").value.trim(); if (!name) return;
     n.name = name; n.subject = $("editsubj").value || n.subject;
     await saveNote(n); editing = false; render(); toast("Apunte guardado");
+  } else if (e.target.classList.contains("openform") && n) {
+    gradeOpen(n, +e.target.dataset.oq, e.target.querySelector("textarea").value);
+  } else if (id === "examdateform") {
+    const s = subjects.find(x => x.id === current), v = $("examdate").value;
+    if (s && v) { s.exam = v; await put("subjects", s); toast("Fecha guardada"); }
+    subjMode = null; renderSubjTools(); renderToday();
+  } else if (id === "syncform") {
+    await connectSync($("syncurl").value, $("synckey").value);
   } else if (id === "cardeditform" && n) {
     const k = (n.cards || []).find(x => x.id === e.target.dataset.card);
     const f = $("cefront").value.trim(), b = $("ceback").value.trim();
@@ -1633,7 +1973,9 @@ const drop = $("drop");
 ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, () => drop.classList.remove("over")));
 drop.addEventListener("drop", (e) => { e.preventDefault(); addFiles([...e.dataTransfer.files]); });
 // Al volver a la app (por ejemplo al día siguiente), se actualizan las tarjetas pendientes.
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { renderTop(); renderList(); } });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { renderTop(); renderList(); syncNow(); } });
+window.addEventListener("online", () => syncNow());
+setInterval(() => { if (!document.hidden) syncNow(); }, 120000);
 
 // ---------- Arranque ----------
 applyPrefs();
@@ -1651,5 +1993,6 @@ applyPrefs();
   openId = (notes.find(n => n.example) || notes.slice().sort((a, b) => b.added - a.added)[0] || {}).id || null;
   if (notes.find(n => n.id === openId)?.summary) view = "resumen";
   render();
+  syncNow();
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 })();

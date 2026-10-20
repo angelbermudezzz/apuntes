@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2026-10-20b";
+const APP_VERSION = "2026-10-20c";
 
 // ---------- Almacenamiento (IndexedDB, con memoria como respaldo) ----------
 const mem = { subjects: [], notes: [] };
@@ -305,11 +305,28 @@ const VIDEO_SCHEMA = {
   type: "OBJECT",
   properties: {
     title: { type: "STRING" },
-    scenes: { type: "ARRAY", items: { type: "OBJECT", properties: { heading: { type: "STRING" }, points: { type: "ARRAY", items: { type: "STRING" } }, narration: { type: "STRING" } }, required: ["heading", "points", "narration"] } }
+    scenes: { type: "ARRAY", items: { type: "OBJECT", properties: {
+      layout: { type: "STRING", enum: ["portada", "lista", "definicion", "comparacion", "dato", "pregunta", "resumen"] },
+      icon: { type: "STRING" }, heading: { type: "STRING" }, points: { type: "ARRAY", items: { type: "STRING" } },
+      term: { type: "STRING" }, definition: { type: "STRING" },
+      left_title: { type: "STRING" }, left_points: { type: "ARRAY", items: { type: "STRING" } },
+      right_title: { type: "STRING" }, right_points: { type: "ARRAY", items: { type: "STRING" } },
+      big: { type: "STRING" }, question: { type: "STRING" }, answer: { type: "STRING" }, narration: { type: "STRING" }
+    }, required: ["layout", "heading", "narration"] } }
   },
   required: ["title", "scenes"]
 };
-const VIDEO_PROMPT = "Escribe el guion de una VIDEO-LECCIÓN corta para repasar estos apuntes, en 5 a 8 escenas. La primera presenta el tema y la última repasa las 3 ideas clave. En cada escena: \"heading\" es un título de pocas palabras, \"points\" son 1 a 3 frases muy cortas que se verán en pantalla (máximo 10 palabras cada una), y \"narration\" es lo que dice el profesor en voz alta: 2 o 3 frases naturales y cercanas, como si se lo explicaras a una amiga, con un ejemplo cuando ayude. No uses símbolos, emojis ni Markdown.";
+const VIDEO_PROMPT = `Escribe el guion de una VIDEO-LECCIÓN para repasar estos apuntes, de 6 a 10 escenas, variada y visual. Cada escena tiene un tipo ("layout"):
+- "portada": la primera. "heading" es el tema y "points" una sola frase gancho.
+- "lista": "heading" y de 2 a 4 "points" cortos.
+- "definicion": "term" es un concepto clave y "definition" su definición en una frase.
+- "comparacion": compara dos cosas con "left_title"/"left_points" y "right_title"/"right_points" (2 o 3 puntos por lado).
+- "dato": "big" es un número, fecha o dato muy corto (máximo 12 caracteres) y "points" una frase que lo explique.
+- "pregunta": "question" es una pregunta para que Erika piense y "answer" la respuesta corta. Pon una o dos a mitad del vídeo.
+- "resumen": la última. "heading" y 3 "points" con lo que no puede olvidar.
+Usa al menos 4 tipos distintos. "icon" es UN emoji que represente la escena. Los textos en pantalla tienen como mucho 10 palabras.
+"narration" es lo que dice el profesor en voz alta: 2 a 4 frases naturales y cercanas, como si se lo explicaras a una amiga, con algún ejemplo. En las preguntas, la narración plantea la pregunta, dice algo como «piénsalo un momento» y luego da la respuesta. La narración no lleva emojis, símbolos ni Markdown.`;
+const PODCAST_PROMPT = "Escribe el guion de una EXPLICACIÓN EN AUDIO de estos apuntes, de unos 3 minutos (entre 350 y 500 palabras), como un profesor cercano que se lo cuenta a Erika. Empieza diciendo en una frase de qué va el tema, explica las ideas en orden y con ejemplos o comparaciones de la vida diaria, y termina con un repaso de las 3 ideas clave y una pregunta para que piense. Es para escuchar, no para leer: frases cortas, sin títulos, viñetas, listas, símbolos, emojis ni Markdown. No inventes datos que no estén en los apuntes.";
 const CHAT_SYSTEM = TEACHER + " Responde a las dudas de Erika sobre sus apuntes de forma clara y breve (normalmente menos de 150 palabras), con ejemplos cuando ayuden y **negrita** en los términos clave. Usa Markdown sencillo. Si la respuesta no está en los apuntes, dilo y luego responde con conocimiento general, avisando de que no viene en sus apuntes.";
 const CHAT_SUGGESTIONS = ["¿Qué es lo más importante para el examen?", "Explícamelo como si tuviera 10 años", "Ponme un ejemplo", "¿Qué me pueden preguntar de esto?"];
 
@@ -319,9 +336,8 @@ let mode = "note"; // note | review | exam
 let view = "apunte"; // pestaña del apunte abierto
 let busy = null; // { id, what, partial, retry }
 let lastError = null; // { id, what, msg }
-let sumMode = "corto", quizCount = 10, cardCount = 15, mapMode = "mapa";
+let sumMode = ls.get("resumen-defecto") || "corto", quizCount = +ls.get("preguntas-defecto") || 10, cardCount = 15, mapMode = "mapa";
 let confirming = false, editing = false, subjMode = null, query = "";
-let speaking = null;
 const answers = {}; // noteId -> respuestas del quiz
 const recorded = {}; // noteId -> si ya se guardó la nota del intento actual
 const $ = (id) => document.getElementById(id);
@@ -368,10 +384,39 @@ function nextIntervals(c) {
 }
 function gradeCard(c, g) {
   const iv = nextIntervals(c);
+  c.seen = true;
   if (g === 0) { c.reps = 0; c.interval = 0; c.ease = Math.max(1.3, c.ease - 0.2); c.due = Date.now(); return; }
   if (g === 1) c.ease = Math.max(1.3, c.ease - 0.15);
   if (g === 3) c.ease += 0.15;
   c.interval = iv[g]; c.reps++; c.due = Date.now() + c.interval * DAY;
+}
+const isNew = (c) => !c.seen && c.reps === 0;
+const todayStr = () => new Date().toDateString();
+const readJSON = (k, def) => { try { return JSON.parse(ls.get(k)) ?? def; } catch (e) { return def; } };
+function newToday() { const o = readJSON("nuevas-hoy", {}); return o.d === todayStr() ? o.n : 0; }
+function bumpNewToday() { ls.set("nuevas-hoy", JSON.stringify({ d: todayStr(), n: newToday() + 1 })); }
+const newLimit = () => { const v = ls.get("nuevas-dia"); return v === null ? 20 : +v; }; // 0 = sin límite
+// Lo que toca repasar hoy: las ya vistas que vencen y, como mucho, el límite diario de nuevas.
+function reviewQueue(scopeNotes) {
+  const lim = endOfToday(), old = [], fresh = [];
+  for (const n of scopeNotes) for (const c of n.cards || []) if (c.due <= lim) (isNew(c) ? fresh : old).push({ noteId: n.id, cardId: c.id });
+  const room = newLimit() ? Math.max(0, newLimit() - newToday()) : Infinity;
+  return [...shuffle(old), ...fresh.slice(0, room)];
+}
+function markStudyDay() {
+  const days = readJSON("dias-repaso", []), t = todayStr();
+  if (days[days.length - 1] !== t) { days.push(t); ls.set("dias-repaso", JSON.stringify(days.slice(-400))); }
+}
+function streak() {
+  const days = new Set(readJSON("dias-repaso", []));
+  const d = new Date(); if (!days.has(d.toDateString())) d.setDate(d.getDate() - 1);
+  let k = 0; while (days.has(d.toDateString())) { k++; d.setDate(d.getDate() - 1); }
+  return k;
+}
+function cardStats(cards) {
+  let nw = 0, lr = 0, ms = 0;
+  for (const c of cards) { if (isNew(c)) nw++; else if (c.interval >= 21) ms++; else lr++; }
+  return { nw, lr, ms };
 }
 const ivLabel = (d) => d === 0 ? "ahora" : d === 1 ? "mañana" : d < 30 ? `${d} días` : d < 365 ? `${Math.round(d / 30)} mes${Math.round(d / 30) > 1 ? "es" : ""}` : "1 año+";
 
@@ -403,14 +448,16 @@ const EXAMPLE_MAP = {
 const EXAMPLE_VIDEO = {
   title: "La célula en dos minutos",
   scenes: [
-    { heading: "La célula", points: ["La unidad básica de la vida"], narration: "Hoy repasamos la célula. Es la pieza más pequeña de la que está hecho cualquier ser vivo, desde una bacteria hasta tú." },
-    { heading: "Dos tipos de célula", points: ["Procariota: sin núcleo", "Eucariota: con núcleo"], narration: "Hay dos grandes tipos. Las procariotas no tienen núcleo definido, como las bacterias. Las eucariotas sí lo tienen, como las de animales y plantas." },
-    { heading: "La central de energía", points: ["Mitocondria", "Produce ATP"], narration: "La mitocondria es como la central eléctrica de la célula. Fabrica ATP, que es la energía que la célula usa para todo." },
-    { heading: "Solo en las plantas", points: ["Cloroplasto", "Hace la fotosíntesis"], narration: "El cloroplasto solo aparece en células vegetales. Es donde se hace la fotosíntesis." },
-    { heading: "Fábrica y cerebro", points: ["Ribosoma: fabrica proteínas", "Núcleo: guarda el ADN"], narration: "Los ribosomas fabrican proteínas. Y el núcleo guarda el ADN y dirige todo lo que hace la célula." },
-    { heading: "Lo que no puedes olvidar", points: ["Procariota sin núcleo, eucariota con núcleo", "Mitocondria igual a energía", "Cloroplasto solo en vegetales"], narration: "Para el examen: procariota sin núcleo y eucariota con núcleo, la mitocondria da energía, y el cloroplasto solo está en las plantas." }
+    { layout: "portada", icon: "🔬", heading: "La célula", points: ["La pieza de la que está hecho todo ser vivo"], narration: "Hoy repasamos la célula. Es la pieza más pequeña de la que está hecho cualquier ser vivo, desde una bacteria hasta tú." },
+    { layout: "definicion", icon: "🧱", heading: "Qué es", term: "Célula", definition: "La unidad básica de la vida.", narration: "Una célula es la unidad básica de la vida. Igual que una casa está hecha de ladrillos, tu cuerpo está hecho de células." },
+    { layout: "comparacion", icon: "⚖️", heading: "Dos tipos de célula", left_title: "Procariota", left_points: ["Sin núcleo definido", "Ej.: bacterias"], right_title: "Eucariota", right_points: ["Con núcleo", "Ej.: animales y plantas"], narration: "Hay dos grandes tipos. Las procariotas no tienen núcleo definido, como las bacterias. Las eucariotas sí lo tienen, como las de animales y plantas." },
+    { layout: "dato", icon: "⚡", heading: "La central de energía", big: "ATP", points: ["La energía que fabrica la mitocondria"], narration: "La mitocondria es como la central eléctrica de la célula. Fabrica ATP, que es la energía que la célula usa para todo." },
+    { layout: "pregunta", icon: "❓", heading: "Piensa", question: "¿Dónde se hace la fotosíntesis?", answer: "En el cloroplasto, solo en plantas", narration: "Una pregunta. ¿Dónde se hace la fotosíntesis? Piénsalo un momento. Exacto: en el cloroplasto, que solo tienen las células vegetales." },
+    { layout: "lista", icon: "🏭", heading: "Fábrica y cerebro", points: ["Ribosoma: fabrica proteínas", "Núcleo: guarda el ADN"], narration: "Los ribosomas fabrican proteínas. Y el núcleo guarda el ADN y dirige todo lo que hace la célula." },
+    { layout: "resumen", icon: "✅", heading: "Lo que no puedes olvidar", points: ["Procariota sin núcleo, eucariota con núcleo", "Mitocondria igual a energía", "Cloroplasto solo en vegetales"], narration: "Para el examen: procariota sin núcleo y eucariota con núcleo, la mitocondria da energía, y el cloroplasto solo está en las plantas." }
   ]
 };
+const EXAMPLE_PODCAST = "Hola, Erika. Hoy vamos a hablar de la célula, que es la unidad básica de la vida. Piensa en un edificio: está hecho de ladrillos. Pues todos los seres vivos están hechos de células, ya sea una sola, como una bacteria, o millones, como tú. Hay dos tipos. Las procariotas no tienen un núcleo definido; las bacterias son el ejemplo típico. Las eucariotas sí tienen núcleo, rodeado de una membrana, y son las de animales y plantas. Dentro de la célula hay pequeños órganos con trabajos distintos. La mitocondria es la central de energía: fabrica ATP mediante la respiración celular. El cloroplasto hace la fotosíntesis, pero solo está en las células vegetales. Los ribosomas fabrican proteínas. Y el núcleo guarda el ADN y dirige todo. Repasemos lo clave: procariota sin núcleo y eucariota con núcleo; la mitocondria da energía; y el cloroplasto solo aparece en las plantas. Y una pregunta para pensar: ¿por qué crees que nuestras células no necesitan cloroplastos?";
 async function seed() {
   await put("subjects", { id: "ejemplo", name: "Biología", created: Date.now() });
   await put("notes", { id: "ejemplo-nota", subject: "ejemplo", name: "Tema 3 - La célula", kind: "txt", size: EXAMPLE_TEXT.length, added: Date.now(), blob: new Blob([EXAMPLE_TEXT], { type: "text/plain" }), example: true });
@@ -422,7 +469,8 @@ async function upgradeExample() {
   if (!n.summary) { n.summary = { mode: "corto", text: EXAMPLE_SUMMARY, at: Date.now() }; changed = true; }
   if (!n.quiz) { n.quiz = { questions: EXAMPLE_QUIZ, at: Date.now() }; changed = true; }
   if (!n.map) { n.map = { tree: EXAMPLE_MAP, at: Date.now() }; changed = true; }
-  if (!n.video) { n.video = { script: EXAMPLE_VIDEO, at: Date.now() }; changed = true; }
+  if (!n.video || !n.video.script.scenes[0].layout) { n.video = { script: EXAMPLE_VIDEO, at: Date.now() }; changed = true; }
+  if (!n.podcast) { n.podcast = { text: EXAMPLE_PODCAST, at: Date.now() }; changed = true; }
   if (!n.cards) { n.cards = EXAMPLE_CARDS.map(([f, b]) => newCard(f, b)); changed = true; }
   if (/\.txt$/.test(n.name)) { n.name = baseName(n.name); changed = true; }
   if (changed) await put("notes", n);
@@ -432,7 +480,7 @@ async function upgradeExample() {
 function renderTop() {
   const has = !!ls.get("gemini-key");
   $("keydot").classList.toggle("on", has);
-  const due = dueCards(notes).length;
+  const due = reviewQueue(notes).length;
   $("duecount").textContent = due;
   $("reviewbtn").setAttribute("aria-label", `Repasar: ${due} tarjeta${due === 1 ? "" : "s"} para hoy`);
   $("keystatus").textContent = has ? "Conectada: hay una clave guardada en este móvil." : "Todavía no hay ninguna clave guardada. Sin ella se pueden ver los apuntes, pero no crear resúmenes ni tests nuevos.";
@@ -471,6 +519,64 @@ async function renderStorage() {
   } catch (e) { $("storagestatus").textContent = `Versión ${APP_VERSION}.`; }
 }
 
+// ---------- Ajustes personales: color, tema, letra, voz y estudio ----------
+const COLORS = {
+  azul: ["Azul", "#2b4fd8", "#e4eaff", "#7d97ff", "#232d55"],
+  morado: ["Morado", "#6d3fd1", "#eee6ff", "#b195ff", "#2f2550"],
+  rosa: ["Rosa", "#c2367a", "#fde4f0", "#ff8cc0", "#4a2236"],
+  verde: ["Verde", "#1f7a4d", "#dff3e7", "#6fd6a0", "#183b2a"],
+  naranja: ["Naranja", "#b85412", "#ffeadb", "#ffa564", "#45291a"],
+  turquesa: ["Turquesa", "#0f7d8c", "#dcf3f5", "#5fd0de", "#173b40"]
+};
+function applyPrefs() {
+  const [, la, lsoft, da, dsoft] = COLORS[ls.get("color")] || COLORS.azul;
+  let st = $("themevars");
+  if (!st) { st = document.createElement("style"); st.id = "themevars"; document.head.appendChild(st); }
+  st.textContent = `:root{--accent:${la};--accent-soft:${lsoft}}
+    @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--accent:${da};--accent-soft:${dsoft}}}
+    :root[data-theme="dark"]{--accent:${da};--accent-soft:${dsoft}}`;
+  const tema = ls.get("tema") || "auto";
+  if (tema === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme = tema;
+  document.documentElement.style.fontSize = { normal: "100%", grande: "112.5%", enorme: "125%" }[ls.get("letra")] || "100%";
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = la;
+}
+function renderPrefs() {
+  const box = $("prefs"); if (!box) return;
+  const chip = (key, val, label, def) => `<button class="tab small" data-pref="${key}" data-val="${val}" aria-pressed="${(ls.get(key) ?? def) === String(val)}">${label}</button>`;
+  const col = ls.get("color") || "azul";
+  const allCards = notes.flatMap(n => n.cards || []), cs = cardStats(allCards);
+  const tested = notes.filter(n => n.quizStats);
+  const avg = tested.length ? (10 * tested.reduce((k, n) => k + n.quizStats.best / n.quizStats.total, 0) / tested.length).toFixed(1).replace(".", ",") : "–";
+  const sk = streak();
+  box.innerHTML = `
+    <section><h3>Apariencia</h3>
+      <p class="note">Color de la app</p>
+      <div class="swatches">${Object.entries(COLORS).map(([k, v]) => `<button class="swatch" data-color="${k}" style="--sw:${v[1]}" aria-pressed="${k === col}"><span></span>${v[0]}</button>`).join("")}</div>
+      <p class="note">Tema</p><div class="actions">${chip("tema", "auto", "Como el móvil", "auto")}${chip("tema", "light", "Claro", "auto")}${chip("tema", "dark", "Oscuro", "auto")}</div>
+      <p class="note">Tamaño de letra</p><div class="actions">${chip("letra", "normal", "Normal", "normal")}${chip("letra", "grande", "Grande", "normal")}${chip("letra", "enorme", "Muy grande", "normal")}</div>
+    </section>
+    <section><h3>Voz</h3>
+      ${canSpeak ? (voices.length ? `<label class="note" for="voicesel">Voz para audios, vídeos y tarjetas</label>
+        <select id="voicesel">${voices.map(v => `<option value="${esc(v.name)}" ${voice && v.name === voice.name ? "selected" : ""}>${esc(v.name.replace(/^(Microsoft|Google)\s*/, ""))} (${esc(v.lang)})</option>`).join("")}</select>` : `<p class="note">Este móvil no tiene voces en español instaladas; se usará la que tenga.</p>`)
+        + `<div class="actions"><label class="note" for="prefrate">Velocidad</label>${rateSelect("prefrate")}<button class="small" id="voicetest">Probar</button></div>`
+        : `<p class="note">Este navegador no tiene voz.</p>`}
+    </section>
+    <section><h3>Estudio</h3>
+      <p class="note">Tarjetas nuevas cada día (para no agobiarte)</p><div class="actions">${[10, 20, 30].map(k => chip("nuevas-dia", k, k, "20")).join("")}${chip("nuevas-dia", 0, "Sin límite", "20")}</div>
+      <p class="note">Leer las tarjetas en voz alta al repasar</p><div class="actions">${chip("leer-tarjetas", "1", "Sí", "0")}${chip("leer-tarjetas", "0", "No", "0")}</div>
+      <p class="note">Resumen por defecto</p><div class="actions">${chip("resumen-defecto", "corto", "Corto", "corto")}${chip("resumen-defecto", "detallado", "Detallado", "corto")}</div>
+      <p class="note">Preguntas por test</p><div class="actions">${[5, 10, 15].map(k => chip("preguntas-defecto", k, k, "10")).join("")}</div>
+    </section>
+    <section><h3>Tus números</h3>
+      <div class="statgrid">
+        <div><b>${notes.length}</b><span>apuntes</span></div>
+        <div><b>${cs.ms}<small>/${allCards.length}</small></b><span>tarjetas dominadas</span></div>
+        <div><b>${avg}</b><span>nota media en tests</span></div>
+        <div><b>${sk}</b><span>día${sk === 1 ? "" : "s"} seguido${sk === 1 ? "" : "s"}</span></div>
+      </div>
+    </section>`;
+}
+
 // ---------- Asignaturas y lista ----------
 function renderTabs() {
   const counts = {}; notes.forEach(n => counts[n.subject] = (counts[n.subject] || 0) + 1);
@@ -489,7 +595,7 @@ function renderSubjTools() {
   if (!s) { box.innerHTML = ""; subjMode = null; return; }
   const sn = notes.filter(n => n.subject === s.id);
   const pool = sn.reduce((k, n) => k + (n.quiz?.questions?.length || 0), 0);
-  const due = dueCards(sn).length;
+  const due = reviewQueue(sn).length;
   if (subjMode === "rename") {
     box.innerHTML = `<form class="inline-form" id="renameform">
       <input type="text" id="renameinput" value="${esc(s.name)}" maxlength="40" aria-label="Nuevo nombre de la asignatura">
@@ -522,7 +628,7 @@ function renderList() {
     if (n.summary) chips.push(`<span class="chip">resumen</span>`);
     if (n.quizStats) chips.push(`<span class="chip ${n.quizStats.best / n.quizStats.total >= 0.8 ? "good" : ""}">test ${n.quizStats.best}/${n.quizStats.total}</span>`);
     else if (n.quiz) chips.push(`<span class="chip">test</span>`);
-    if (n.cards?.length) { const d = dueCards([n]).length; chips.push(`<span class="chip">${n.cards.length} tarjetas${d ? ` · ${d} hoy` : ""}</span>`); }
+    if (n.cards?.length) { const d = reviewQueue([n]).length; chips.push(`<span class="chip">${n.cards.length} tarjetas${d ? ` · ${d} hoy` : ""}</span>`); }
     if (n.map) chips.push(`<span class="chip">mapa</span>`);
     if (n.video) chips.push(`<span class="chip">vídeo</span>`);
     return `<button class="item" data-id="${esc(n.id)}" aria-current="${mode === "note" && n.id === openId}">
@@ -550,10 +656,10 @@ function renderViewer() {
     </div>
     <div id="editbox"></div>
     <div id="confirm"></div>
-    <div class="vtabs" role="tablist">${tab("apunte", "Apunte")}${tab("resumen", "Resumen")}${tab("quiz", "Test")}${tab("tarjetas", "Tarjetas")}${tab("mapa", "Mapa")}${tab("video", "Vídeo")}${tab("preguntar", "Preguntar")}</div>
+    <div class="vtabs" role="tablist">${tab("apunte", "Apunte")}${tab("resumen", "Resumen")}${tab("audio", "Audio")}${tab("quiz", "Test")}${tab("tarjetas", "Tarjetas")}${tab("mapa", "Mapa")}${tab("video", "Vídeo")}${tab("preguntar", "Preguntar")}</div>
     <div class="content" id="content"></div>`;
   renderEdit(n); renderConfirm();
-  ({ apunte: renderOriginal, resumen: renderSummary, quiz: renderQuiz, tarjetas: renderCards, mapa: renderMap, video: renderVideo, preguntar: renderChat }[view] || renderOriginal)(n);
+  return ({ apunte: renderOriginal, resumen: renderSummary, audio: renderAudio, quiz: renderQuiz, tarjetas: renderCards, mapa: renderMap, video: renderVideo, preguntar: renderChat }[view] || renderOriginal)(n);
 }
 function renderEdit(n) {
   const box = $("editbox"); if (!box) return;
@@ -627,12 +733,10 @@ function renderSummary(n) {
       <button class="primary" id="gosum" ${busy ? "disabled" : ""}>${n.summary ? "Hacer otro resumen" : "Hacer resumen"}</button></div>
     ${errHtml(n, "resumen")}
     ${b ? busyHtml(busy.partial ? "Gemini está escribiendo…" : "Gemini está leyendo tus apuntes…") : ""}
-    ${b && busy.partial ? `<div class="md" id="partial">${md(busy.partial)}</div>` : n.summary ? `${canSpeak ? `<div class="actions">
-        <button class="small" id="speakbtn">${speaking === n.id ? "Parar audio" : "Escuchar resumen"}</button>
-        <label class="note" for="rate">Velocidad</label>
-        <select id="rate">${[0.8, 1, 1.25, 1.5].map(r => `<option value="${r}" ${r === speakRate ? "selected" : ""}>${String(r).replace(".", ",")}x</option>`).join("")}</select>
+    ${b && busy.partial ? `<div class="md" id="partial">${md(busy.partial)}</div>` : n.summary ? `<div class="actions">
+        ${canSpeak ? `<button class="small" id="speakbtn">Escuchar resumen</button>` : ""}
         <button class="small ghost" id="copysum">Copiar</button>
-      </div>` : ""}
+      </div>
       <p class="note">Resumen ${n.summary.mode} · ${fmtDate(n.summary.at)}</p><div class="md">${md(n.summary.text)}</div>`
       : (b ? "" : `<p class="note">Elige corto o detallado y pulsa «Hacer resumen». El resumen se guarda con el apunte.</p>${noKeyHint()}`)}
   </div>`;
@@ -682,24 +786,44 @@ function renderQuiz(n) {
   </div>`;
 }
 
+let cardEdit = null, cardAdd = false;
 function renderCards(n) {
   const c = $("content");
   const b = isBusyWith(n, "tarjetas");
   const cards = n.cards || [];
-  const due = dueCards([n]).length;
+  const due = reviewQueue([n]).length;
+  const st = cardStats(cards), sk = streak();
   const cntBtn = (k) => `<button class="tab small" data-cc="${k}" aria-pressed="${cardCount === k}">${k}</button>`;
+  const item = (k) => cardEdit === k.id
+    ? `<li><form class="stack" id="cardeditform" data-card="${esc(k.id)}">
+        <label class="note" for="cefront">Pregunta</label><textarea id="cefront" rows="2">${esc(k.front)}</textarea>
+        <label class="note" for="ceback">Respuesta</label><textarea id="ceback" rows="2">${esc(k.back)}</textarea>
+        <div class="actions"><button class="small primary" type="submit">Guardar</button><button class="small ghost" type="button" id="cecancel">Cancelar</button></div></form></li>`
+    : `<li><b>${esc(k.front)}</b><span>${esc(k.back)}</span>
+        <span class="row" style="justify-content:space-between"><span class="note">${isNew(k) ? "Nueva" : k.interval >= 21 ? "Dominada" : "Aprendiendo"} · próximo repaso: ${k.due <= endOfToday() ? "hoy" : fmtDate(k.due)}</span>
+        <span class="actions"><button class="small ghost" data-ce="${esc(k.id)}">Editar</button><button class="small ghost danger" data-cd="${esc(k.id)}">Borrar</button></span></span></li>`;
   c.innerHTML = `<div class="stack">
-    ${cards.length ? `<div class="actions">
+    ${cards.length ? `<div class="cstats">
+        <div class="cbar" aria-hidden="true">${st.nw ? `<span class="s-new" style="flex:${st.nw}"></span>` : ""}${st.lr ? `<span class="s-lr" style="flex:${st.lr}"></span>` : ""}${st.ms ? `<span class="s-ms" style="flex:${st.ms}"></span>` : ""}</div>
+        <div class="clegend"><span><i class="s-new"></i>${st.nw} nuevas</span><span><i class="s-lr"></i>${st.lr} aprendiendo</span><span><i class="s-ms"></i>${st.ms} dominadas</span></div>
+        ${sk ? `<p class="note">🔥 Llevas ${sk} día${sk > 1 ? "s" : ""} seguido${sk > 1 ? "s" : ""} repasando.</p>` : ""}
+      </div>
+      <div class="actions">
         <button class="primary" id="reviewnote" ${due ? "" : "disabled"}>${due ? `Repasar ahora (${due})` : "Nada pendiente hoy"}</button>
-        <button id="practicenote">Practicar todas</button></div>
-      <p class="note">${cards.length} tarjetas. Las que te sabes bien vuelven a salir más tarde y las que fallas, antes.</p>` : ""}
-    <div class="actions"><span class="note">${cards.length ? "Crear más:" : "Tarjetas:"}</span>${cntBtn(10)}${cntBtn(15)}${cntBtn(25)}
-      <button class="${cards.length ? "" : "primary"}" id="gocards" ${busy ? "disabled" : ""}>${cards.length ? "Añadir tarjetas" : "Hacer tarjetas"}</button></div>
+        <button id="practicenote">Practicar todas</button>
+        ${canSpeak ? `<button id="listencards">Escuchar tarjetas</button>` : ""}</div>` : ""}
+    <div class="actions"><span class="note">${cards.length ? "Crear más con Gemini:" : "Tarjetas:"}</span>${cntBtn(10)}${cntBtn(15)}${cntBtn(25)}
+      <button class="${cards.length ? "" : "primary"}" id="gocards" ${busy ? "disabled" : ""}>${cards.length ? "Añadir tarjetas" : "Hacer tarjetas"}</button>
+      <button class="ghost" id="cardaddtoggle">${cardAdd ? "Cerrar" : "Escribir una a mano"}</button></div>
+    ${cardAdd ? `<form class="stack panelish" id="cardaddform">
+        <label class="note" for="cafront">Pregunta</label><textarea id="cafront" rows="2" placeholder="Por ejemplo: ¿Qué produce la mitocondria?"></textarea>
+        <label class="note" for="caback">Respuesta</label><textarea id="caback" rows="2" placeholder="Energía (ATP)"></textarea>
+        <div class="actions"><button class="small primary" type="submit">Añadir tarjeta</button></div></form>` : ""}
     ${errHtml(n, "tarjetas")}
     ${b ? busyHtml("Gemini está haciendo las tarjetas…") : ""}
-    ${cards.length ? `<details><summary>Ver todas las tarjetas</summary><ul class="cardlist" style="margin-top:8px">${cards.map(k => `<li><b>${esc(k.front)}</b><span>${esc(k.back)}</span><span class="note">Próximo repaso: ${k.due <= endOfToday() ? "hoy" : fmtDate(k.due)}</span></li>`).join("")}</ul>
+    ${cards.length ? `<details ${cardEdit ? "open" : ""}><summary>Ver y editar las ${cards.length} tarjetas</summary><ul class="cardlist" style="margin-top:8px">${cards.map(item).join("")}</ul>
       <div class="actions" style="margin-top:8px"><button class="small danger" id="delcards">Borrar todas las tarjetas</button></div></details>`
-      : (b ? "" : `<p class="note">Gemini saca preguntas y respuestas cortas del apunte. Luego, cada día, «Repasar» te enseña las que te tocan, justo antes de que se te olviden.</p>${noKeyHint()}`)}
+      : (b ? "" : `<p class="note">Gemini saca preguntas y respuestas cortas del apunte (o escríbelas tú). Luego, cada día, «Repasar» te enseña las que te tocan, justo antes de que se te olviden.</p>${noKeyHint()}`)}
   </div>`;
 }
 
@@ -772,15 +896,16 @@ function outlineHtml(tree) {
     </section>`).join("")}</div>`;
 }
 
-// ---------- Voz del dispositivo (audio y vídeo) ----------
+// ---------- Voz del dispositivo ----------
 const canSpeak = "speechSynthesis" in window;
 let speakRate = +ls.get("velocidad-voz") || 1;
-let voice = null, speakRun = 0;
+let voice = null, voices = [];
 function pickVoice() {
   if (!canSpeak) return;
-  const vs = speechSynthesis.getVoices().filter(v => /^es/i.test(v.lang));
-  const score = (v) => (/^es[-_]ES/i.test(v.lang) ? 4 : 0) + (/google|natural|neural|premium|enhanced|mejorad/i.test(v.name) ? 3 : 0) + (/m[oó]nica|luc[ií]a|elvira|helena|paulina/i.test(v.name) ? 1 : 0) + (v.localService ? 1 : 0);
-  voice = vs.sort((a, b) => score(b) - score(a))[0] || null;
+  const score = (v) => (/^es[-_]ES/i.test(v.lang) ? 4 : 0) + (/google|natural|neural|premium|enhanced|mejorad/i.test(v.name) ? 3 : 0) + (/m[oó]nica|luc[ií]a|elvira|helena|paulina|marisol/i.test(v.name) ? 1 : 0) + (v.localService ? 1 : 0);
+  voices = speechSynthesis.getVoices().filter(v => /^es/i.test(v.lang)).sort((a, b) => score(b) - score(a));
+  voice = voices.find(v => v.name === ls.get("voz")) || voices[0] || null;
+  if (!$("settings").hidden) renderPrefs();
 }
 if (canSpeak) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 function utter(text) {
@@ -789,26 +914,106 @@ function utter(text) {
   return u;
 }
 function plainText(mdText) {
-  return mdText.replace(/[#*_`>|]/g, "").replace(/^\s*[-•]\s+/gm, "").replace(/\[(.*?)\]\(.*?\)/g, "$1");
+  return String(mdText || "").replace(/[#*_`>|]/g, "").replace(/^\s*[-•]\s+/gm, "").replace(/\[(.*?)\]\(.*?\)/g, "$1");
 }
-function speak(n) {
-  if (!canSpeak) return;
-  speechSynthesis.cancel();
-  const parts = plainText(n.summary.text).match(/[^.!?:\n]+[.!?:]*/g)?.map(s => s.trim()).filter(Boolean) || [];
-  const run = ++speakRun;
-  speaking = n.id;
-  parts.forEach((p, i) => {
-    const u = utter(p);
-    if (i === parts.length - 1) u.onend = () => { if (run === speakRun && speaking === n.id) { speaking = null; if (view === "resumen") renderViewer(); } };
-    speechSynthesis.speak(u);
-  });
+const sentences = (text) => plainText(text).match(/[^.!?:\n]+[.!?:]*/g)?.map(s => s.trim()).filter(s => s.length > 1) || [];
+const rateSelect = (id) => `<select id="${id}" aria-label="Velocidad de la voz">${[0.8, 0.9, 1, 1.15, 1.3, 1.5].map(r => `<option value="${r}" ${r === speakRate ? "selected" : ""}>${String(r).replace(".", ",")}x</option>`).join("")}</select>`;
+function setRate(r) { speakRate = r; ls.set("velocidad-voz", String(r)); }
+
+// ---------- Reproductor de audio: lee frase a frase, se puede pausar, saltar y ver por dónde va ----------
+const rd = { key: null, parts: [], i: 0, playing: false, run: 0, timer: null };
+function rdStop() { rd.run++; clearTimeout(rd.timer); rd.playing = false; if (canSpeak) speechSynthesis.cancel(); rdPaint(); }
+const stopSpeak = rdStop;
+function rdLoad(key, parts) { if (rd.key !== key || rd.parts.length !== parts.length) { rdStop(); rd.key = key; rd.i = 0; } rd.parts = parts; }
+function rdPlay() {
+  if (!canSpeak || !rd.parts.length) return;
+  vStop();
+  const run = ++rd.run; clearTimeout(rd.timer); speechSynthesis.cancel();
+  rd.playing = true; rdPaint();
+  const p = rd.parts[rd.i];
+  const u = utter(p.text);
+  let done = false;
+  const next = () => {
+    if (done || run !== rd.run) return; done = true; clearTimeout(rd.timer);
+    rd.timer = setTimeout(() => {
+      if (run !== rd.run) return;
+      if (rd.i < rd.parts.length - 1) { rd.i++; rdPlay(); }
+      else { rd.playing = false; rd.i = 0; rdPaint(); }
+    }, (p.pause ?? 250) / speakRate);
+  };
+  u.onend = next; u.onerror = next;
+  speechSynthesis.speak(u);
+  rd.timer = setTimeout(next, Math.max(5000, p.text.split(/\s+/).length * 900 / speakRate)); // por si el navegador no avisa al terminar
 }
-function stopSpeak() { speakRun++; if (canSpeak) speechSynthesis.cancel(); speaking = null; }
+function rdJump(i) { rd.i = Math.max(0, Math.min(rd.parts.length - 1, i)); if (rd.playing) rdPlay(); else rdPaint(); }
+function rdPaint() {
+  const box = $("rdtext"); if (!box) return;
+  $("rdplay").textContent = rd.playing ? "Pausa" : "Reproducir";
+  $("rdplay").setAttribute("aria-pressed", rd.playing);
+  $("rdpos").textContent = `${rd.i + 1} / ${rd.parts.length}`;
+  $("rdbar").style.width = (100 * (rd.i + (rd.playing ? 0.5 : 0)) / Math.max(1, rd.parts.length)) + "%";
+  box.querySelectorAll("[data-si]").forEach(el => el.classList.toggle("now", +el.dataset.si === rd.i && (rd.playing || rd.i > 0)));
+  const now = box.querySelector(".now");
+  if (now && rd.playing) { const top = now.offsetTop - box.offsetTop; box.scrollTo({ top: Math.max(0, top - box.clientHeight / 3), behavior: "smooth" }); }
+}
+
+// Fuentes de audio de un apunte
+let audioSrc = null;
+function audioSources(n) {
+  const out = [];
+  out.push({ id: "podcast", label: "Explicación", ready: !!n.podcast });
+  out.push({ id: "resumen", label: "Resumen", ready: !!n.summary });
+  out.push({ id: "tarjetas", label: "Tarjetas", ready: !!n.cards?.length });
+  if (n.kind === "txt" || n.kind === "docx" || n.pdfText) out.push({ id: "apunte", label: "Apunte entero", ready: true });
+  return out;
+}
+async function audioParts(n, src) {
+  if (src === "podcast") return sentences(n.podcast.text).map(t => ({ text: t }));
+  if (src === "resumen") return sentences(n.summary.text).map(t => ({ text: t }));
+  if (src === "tarjetas") return (n.cards || []).flatMap((c, i) => [
+    { text: `Pregunta ${i + 1}. ${c.front}`, pause: 3500, show: c.front, q: true },
+    { text: c.back, pause: 1200, show: c.back }]);
+  const text = n.kind === "pdf" ? n.pdfText : await noteText(n);
+  return sentences(text).slice(0, 600).map(t => ({ text: t }));
+}
+async function renderAudio(n) {
+  const c = $("content");
+  const srcs = audioSources(n);
+  if (!audioSrc || !srcs.some(s => s.id === audioSrc)) audioSrc = (srcs.find(s => s.ready && s.id !== "apunte") || srcs[0]).id;
+  const src = srcs.find(s => s.id === audioSrc);
+  const b = isBusyWith(n, "podcast");
+  const chips = `<div class="actions">${srcs.map(s => `<button class="tab small" data-as="${s.id}" aria-pressed="${s.id === audioSrc}">${s.label}</button>`).join("")}</div>`;
+  const desc = { podcast: "Gemini te lo explica como un profesor, en unos 3 minutos, para escuchar andando o en el bus.", resumen: "Escucha el resumen del apunte.", tarjetas: "Repaso sin mirar: dice la pregunta, te deja unos segundos para pensar y luego la respuesta.", apunte: "Lee el apunte tal cual." }[audioSrc];
+  if (!canSpeak) { c.innerHTML = `<div class="stack">${chips}<p class="note">Este navegador no tiene voz. Prueba con Chrome o Safari.</p></div>`; return; }
+  if (!src.ready || (audioSrc === "podcast" && b)) {
+    c.innerHTML = `<div class="stack">${chips}<p class="note">${desc}</p>${errHtml(n, "podcast")}
+      ${audioSrc === "podcast" ? (b ? busyHtml(busy.partial ? "Gemini está escribiendo la explicación…" : "Gemini está preparando la explicación…") + (busy.partial ? `<div class="md" id="partial">${md(busy.partial)}</div>` : "")
+        : `<div class="actions"><button class="primary" id="gopodcast" ${busy ? "disabled" : ""}>Crear explicación en audio</button></div>${noKeyHint()}`)
+      : audioSrc === "resumen" ? `<p class="note">Todavía no hay resumen. Hazlo en la pestaña «Resumen».</p>` : `<p class="note">Todavía no hay tarjetas. Hazlas en la pestaña «Tarjetas».</p>`}</div>`;
+    return;
+  }
+  c.innerHTML = `<div class="stack">${chips}<p class="note">${desc}</p><p class="sub">Cargando…</p></div>`;
+  const parts = await audioParts(n, audioSrc).catch(() => []);
+  if (openId !== n.id || view !== "audio") return;
+  rdLoad(n.id + ":" + audioSrc, parts);
+  c.innerHTML = `<div class="stack">${chips}<p class="note">${desc}</p>
+    <div class="audio">
+      <div class="actions"><button id="rdprev" aria-label="Frase anterior">‹ Atrás</button><button class="primary big" id="rdplay">Reproducir</button><button id="rdnext" aria-label="Frase siguiente">Adelante ›</button>
+        ${rateSelect("rate")}<span class="note" id="rdpos"></span></div>
+      <div class="progress"><span id="rdbar"></span></div>
+      <div class="rdtext" id="rdtext">${parts.map((p, i) => `<span data-si="${i}" class="${p.q ? "q" : ""}${p.q || (audioSrc === "tarjetas" && i % 2) ? " blk" : ""}">${esc(p.show || p.text)} </span>`).join("")}</div>
+      <p class="note">Toca una frase para escuchar desde ahí. Si bloqueas el móvil, el audio puede pararse.</p>
+    </div>
+    ${audioSrc === "podcast" ? `<div class="actions"><button class="small ghost" id="gopodcast" ${busy ? "disabled" : ""}>Hacer otra explicación</button></div>` : ""}
+  </div>`;
+  rdPaint();
+}
 
 // ---------- Vídeo-lección (escenas animadas + voz del dispositivo) ----------
 const vp = { id: null, i: 0, playing: false, ended: false, timers: [], run: 0 };
 function vClear() { vp.run++; vp.timers.forEach(clearTimeout); vp.timers = []; if (canSpeak) speechSynthesis.cancel(); }
 function vStop() { vClear(); vp.playing = false; }
+const LAYOUTS = ["portada", "lista", "definicion", "comparacion", "dato", "pregunta", "resumen"];
 function renderVideo(n) {
   const c = $("content");
   const b = isBusyWith(n, "video");
@@ -816,49 +1021,90 @@ function renderVideo(n) {
   if (vp.id !== n.id) { vStop(); vp.id = n.id; vp.i = 0; vp.ended = false; }
   c.innerHTML = `<div class="stack">
     <div class="actions"><button class="${sc ? "" : "primary"}" id="govideo" ${busy ? "disabled" : ""}>${sc ? "Hacer otro vídeo" : "Hacer vídeo"}</button>
-      ${sc ? `<span class="note">${esc(sc.title || "")} · ${sc.scenes.length} escenas</span>` : ""}</div>
+      ${sc ? `<span class="note">${esc(sc.title || "")} · ${sc.scenes.length} escenas · unos ${Math.max(1, Math.round(sc.scenes.reduce((k, s) => k + s.narration.split(/\s+/).length, 0) / 150 / speakRate))} min</span>` : ""}</div>
     ${errHtml(n, "video")}
     ${b ? busyHtml("Gemini está escribiendo el guion del vídeo…") : ""}
-    ${sc ? `<div class="player">
+    ${sc ? `<div class="player" id="player">
+        <div class="stage" id="vstage" role="button" tabindex="0" aria-label="Vídeo: toca para reproducir o pausar"></div>
         <div class="bars" id="vbars"></div>
-        <div class="stage" id="vstage"></div>
-        <div class="actions"><button id="vprev">Anterior</button><button class="primary" id="vplay">Reproducir</button><button id="vnext">Siguiente</button></div>
+        <div class="actions vctl"><button id="vprev" aria-label="Escena anterior">‹</button><button class="primary big" id="vplay">Reproducir</button><button id="vnext" aria-label="Escena siguiente">›</button>
+          ${rateSelect("vrate")}<button class="small ghost" id="vfull">Pantalla completa</button></div>
         ${canSpeak ? "" : `<p class="note">Este navegador no tiene voz: el vídeo avanza solo con subtítulos.</p>`}
         <div class="subs" id="vsubs" aria-live="polite"></div>
       </div>`
-      : (b ? "" : `<p class="note">Pulsa «Hacer vídeo» y Gemini preparará una vídeo-lección corta con este apunte: escenas animadas y una voz que te lo explica.</p>${noKeyHint()}`)}
+      : (b ? "" : `<p class="note">Pulsa «Hacer vídeo» y Gemini preparará una vídeo-lección con este apunte: escenas animadas con dibujos, comparaciones, preguntas y una voz que te lo explica.</p>${noKeyHint()}`)}
   </div>`;
   if (sc) vDraw(n, false);
+}
+function sceneHtml(s, i, total) {
+  const L = LAYOUTS.includes(s.layout) ? s.layout : "lista";
+  const icon = s.icon ? `<span class="vicon">${esc(String(s.icon).slice(0, 4))}</span>` : "";
+  const pts = (arr, cls = "") => (arr || []).filter(Boolean).length ? `<ul class="${cls}">${arr.filter(Boolean).map(p => `<li>${esc(p)}</li>`).join("")}</ul>` : "";
+  let body;
+  if (L === "portada") body = `${icon}<h3 class="big"><span>${esc(s.heading)}</span></h3>${s.points?.[0] ? `<p class="lead">${esc(s.points[0])}</p>` : ""}`;
+  else if (L === "definicion") body = `<p class="kick">${icon}${esc(s.heading)}</p><p class="term">${esc(s.term || s.heading)}</p><p class="def">${esc(s.definition || (s.points || []).join(" "))}</p>`;
+  else if (L === "comparacion") body = `<p class="kick">${icon}${esc(s.heading)}</p><div class="cols">
+      <div><b>${esc(s.left_title || "")}</b>${pts(s.left_points)}</div><div><b>${esc(s.right_title || "")}</b>${pts(s.right_points)}</div></div>`;
+  else if (L === "dato") body = `<p class="kick">${icon}${esc(s.heading)}</p><p class="huge">${esc(s.big || s.points?.[0] || "")}</p>${s.big && s.points?.[0] ? `<p class="lead">${esc(s.points[0])}</p>` : ""}`;
+  else if (L === "pregunta") body = `<p class="kick">${icon || '<span class="vicon">❓</span>'}${esc(s.heading || "Pregunta")}</p><p class="qq">${esc(s.question || s.points?.[0] || "")}</p><p class="ans"><span>${esc(s.answer || s.points?.[1] || "")}</span></p>`;
+  else if (L === "resumen") body = `<p class="kick">${icon}${esc(s.heading)}</p>${pts(s.points, "checks")}`;
+  else body = `<p class="kick">${icon}${esc(s.heading)}</p>${pts(s.points)}`;
+  return `<span class="scn">${i + 1} / ${total}</span><div class="scene l-${L} t${i % 5}">${body}</div>`;
 }
 function vDraw(n, animate) {
   const sc = n.video.script, s = sc.scenes[vp.i];
   if (!$("vstage")) return;
-  $("vbars").innerHTML = sc.scenes.map((_, k) => `<span class="${k <= vp.i ? "done" : ""}"></span>`).join("");
-  $("vstage").innerHTML = `<span class="scn">${vp.i + 1} / ${sc.scenes.length}</span>
-    <h3 class="fade"><span>${esc(s.heading)}</span></h3>
-    <ul>${(s.points || []).map(p => `<li class="${animate ? "" : "on"}">${esc(p)}</li>`).join("")}</ul>`;
-  $("vsubs").textContent = s.narration;
+  $("vbars").innerHTML = sc.scenes.map((_, k) => `<button class="${k < vp.i ? "done" : k === vp.i ? "now" : ""}" data-vs="${k}" aria-label="Ir a la escena ${k + 1}"></button>`).join("");
+  $("vstage").innerHTML = sceneHtml(s, vp.i, sc.scenes.length);
+  $("vstage").classList.toggle("anim", !!animate);
+  if (!animate) $("vstage").querySelectorAll("li, .ans, .def, .cols > div").forEach(el => el.classList.add("on"));
+  const words = s.narration.split(/\s+/);
+  $("vsubs").innerHTML = words.map((w, k) => `<span data-w="${k}">${esc(w)}</span>`).join(" ");
   $("vplay").textContent = vp.playing ? "Pausa" : (vp.ended ? "Ver otra vez" : "Reproducir");
 }
 function vPlayScene(n) {
-  vClear();
+  vClear(); rd.run++; rd.playing = false;
   const sc = n.video.script, s = sc.scenes[vp.i];
   vDraw(n, true);
-  document.querySelectorAll("#vstage li").forEach((li, k) => vp.timers.push(setTimeout(() => li.classList.add("on"), 400 + k * 1600)));
   const est = Math.max(4000, s.narration.split(/\s+/).length * 420 / speakRate);
+  const items = [...document.querySelectorAll("#vstage li, #vstage .def, #vstage .cols > div")];
+  items.forEach((el, k) => vp.timers.push(setTimeout(() => el.classList.add("on"), 500 + k * Math.min(1600, est / (items.length + 1)))));
+  const ans = document.querySelector("#vstage .ans");
+  if (ans) vp.timers.push(setTimeout(() => ans.classList.add("on"), est * 0.6));
   let advanced = false;
   const run = vp.run;
   const next = () => {
     if (advanced || run !== vp.run || !vp.playing || vp.id !== n.id) return; advanced = true;
-    if (vp.i < sc.scenes.length - 1) vp.timers.push(setTimeout(() => { vp.i++; vPlayScene(n); }, 700));
+    document.querySelectorAll("#vstage .ans, #vstage li").forEach(el => el.classList.add("on"));
+    if (vp.i < sc.scenes.length - 1) vp.timers.push(setTimeout(() => { vp.i++; vPlayScene(n); }, 900));
     else { vp.playing = false; vp.ended = true; vDraw(n, false); }
   };
   if (canSpeak) {
-    const u = utter(s.narration); u.onend = next;
+    const u = utter(s.narration); u.onend = next; u.onerror = next;
+    // Subtítulos tipo karaoke: se marca la palabra que se está diciendo (si el navegador lo permite).
+    const starts = []; let pos = 0;
+    s.narration.split(/\s+/).forEach(w => { pos = s.narration.indexOf(w, pos); starts.push(pos); pos += w.length; });
+    u.onboundary = (e) => {
+      if (run !== vp.run || e.name && e.name !== "word") return;
+      let k = starts.findIndex((st, j) => e.charIndex >= st && (j === starts.length - 1 || e.charIndex < starts[j + 1]));
+      document.querySelectorAll("#vsubs span").forEach((el, j) => el.classList.toggle("said", j <= k));
+    };
     speechSynthesis.speak(u);
     vp.timers.push(setTimeout(next, est * 2.2)); // por si el navegador no avisa al terminar
   } else vp.timers.push(setTimeout(next, est));
 }
+function vToggle(n) {
+  if (vp.playing) { vStop(); vDraw(n, false); }
+  else { if (vp.ended) vp.i = 0; vp.playing = true; vp.ended = false; vPlayScene(n); }
+}
+function vFullscreen() {
+  const pl = $("player"); if (!pl) return;
+  if (document.fullscreenElement) { document.exitFullscreen(); return; }
+  if (pl.classList.contains("theater")) { pl.classList.remove("theater"); $("vfull").textContent = "Pantalla completa"; return; }
+  if (pl.requestFullscreen) pl.requestFullscreen().then(() => { try { screen.orientation?.lock?.("landscape").catch(() => {}); } catch (e) {} }).catch(() => { pl.classList.add("theater"); $("vfull").textContent = "Salir"; });
+  else { pl.classList.add("theater"); $("vfull").textContent = "Salir"; } // iPhone: no deja pantalla completa, se amplía dentro de la página
+}
+document.addEventListener("fullscreenchange", () => { const b = $("vfull"); if (b) b.textContent = document.fullscreenElement ? "Salir" : "Pantalla completa"; });
 
 // ---------- Preguntar al apunte ----------
 function renderChat(n) {
@@ -898,24 +1144,25 @@ async function ask(n, question) {
   } finally { busy = null; refreshIfOpen(n.id); scrollChat(); }
 }
 function scrollChat() { const box = $("askform"); if (box && isPhone()) box.scrollIntoView({ block: "nearest" }); }
-function streamTo(n, what) {
+function streamTo(n, what, tab = what) {
   return (partial) => {
     if (!busy || busy.id !== n.id) return;
     const first = !busy.partial;
     busy.partial = partial;
     const el = $("partial");
     if (el && !first) el.innerHTML = md(partial);
-    else if (mode === "note" && openId === n.id && view === what) renderViewer();
+    else if (mode === "note" && openId === n.id && view === tab) renderViewer();
   };
 }
 
 // ---------- Repaso de tarjetas ----------
 let rs = null; // { title, queue:[{noteId, cardId}], i, flipped, total, done, practice }
+let swallowClick = false;
 function startReview(scopeNotes, title, practice) {
   stopSpeak(); vStop();
   const queue = practice
     ? shuffle(scopeNotes.flatMap(n => (n.cards || []).map(c => ({ noteId: n.id, cardId: c.id }))))
-    : shuffle(dueCards(scopeNotes));
+    : reviewQueue(scopeNotes);
   if (!queue.length) { toast("No tienes tarjetas pendientes para hoy. ¡Bien hecho!"); return; }
   rs = { title, queue, i: 0, flipped: false, total: queue.length, done: 0, practice: !!practice, right: 0 };
   mode = "review"; renderViewer(); renderList(); showViewer();
@@ -924,46 +1171,90 @@ function findCard(ref) {
   const n = notes.find(x => x.id === ref.noteId);
   return n ? { n, c: (n.cards || []).find(k => k.id === ref.cardId) } : {};
 }
+const autoRead = () => ls.get("leer-tarjetas") === "1";
+function sayOnce(text) { if (!canSpeak) return; rdStop(); speechSynthesis.speak(utter(text)); }
 function renderReview() {
   const v = $("viewer");
   const head = `<div class="vhead"><div><h2>${esc(rs.title)}</h2><p class="sub">${rs.practice ? "Práctica libre: no cambia tus fechas de repaso." : "Las que aciertes volverán más tarde; las que falles, antes."}</p></div>
     <div class="actions"><button class="small" id="endreview">Terminar</button></div></div>
     <div class="progress" aria-hidden="true"><span style="width:${Math.round(100 * rs.done / rs.total)}%"></span></div>`;
   if (rs.i >= rs.queue.length) {
-    v.innerHTML = `${head}<div class="result"><b>¡Repaso terminado!</b><span>${rs.total} tarjeta${rs.total > 1 ? "s" : ""} repasada${rs.total > 1 ? "s" : ""}${rs.practice ? `, ${rs.right} a la primera` : ""}.</span>
-      <span class="note">${dueCards(notes).length ? `Aún te quedan ${dueCards(notes).length} para hoy en otros apuntes.` : "No te queda nada pendiente para hoy."}</span>
+    const left = reviewQueue(notes).length, sk = streak();
+    v.innerHTML = `${head}<div class="result"><b>¡Repaso terminado! 🎉</b><span>${rs.total} tarjeta${rs.total > 1 ? "s" : ""} repasada${rs.total > 1 ? "s" : ""}${rs.practice ? `, ${rs.right} a la primera` : ""}.</span>
+      ${sk ? `<span>🔥 Llevas ${sk} día${sk > 1 ? "s" : ""} seguido${sk > 1 ? "s" : ""} repasando.</span>` : ""}
+      <span class="note">${left ? `Aún te quedan ${left} para hoy en otros apuntes.` : "No te queda nada pendiente para hoy."}</span>
       <div class="actions"><button class="small primary" id="endreview2">Volver a mis apuntes</button></div></div>`;
     renderTop(); return;
   }
   const { n, c } = findCard(rs.queue[rs.i]);
   if (!c) { rs.queue.splice(rs.i, 1); rs.total = Math.max(rs.done, rs.total - 1); return renderReview(); }
-  const iv = nextIntervals(c);
   v.innerHTML = `${head}
     <div class="flash">
-      <p class="note">${rs.done + 1} de ${rs.total} · ${esc(n.name)}</p>
-      <button class="card ${rs.flipped ? "flip" : ""}" id="flipcard" aria-label="${rs.flipped ? "Tarjeta" : "Toca para ver la respuesta"}">
-        <span class="lab">Pregunta</span><span>${esc(c.front)}</span>
-        ${rs.flipped ? `<span class="back">${esc(c.back)}</span>` : `<span class="note">Piensa la respuesta y toca para verla</span>`}
+      <div class="row" style="justify-content:space-between"><p class="note">${rs.done + 1} de ${rs.total} · ${esc(n.name)}${isNew(c) ? " · nueva" : ""}</p>
+        ${canSpeak ? `<button class="small ghost" id="cardspeak">Escuchar</button>` : ""}</div>
+      <button class="card3d ${rs.flipped ? "flip" : ""}" id="flipcard" aria-label="${rs.flipped ? "Respuesta: " + esc(c.back) : "Pregunta: " + esc(c.front) + ". Toca para ver la respuesta"}">
+        <span class="face front"><span class="lab">Pregunta</span><span class="txt">${esc(c.front)}</span><span class="note">Toca para darle la vuelta</span></span>
+        <span class="face back" aria-hidden="${!rs.flipped}"><span class="lab">Respuesta</span><span class="txt">${esc(c.back)}</span><span class="note">${esc(c.front)}</span></span>
       </button>
-      ${rs.flipped ? (rs.practice
-        ? `<div class="grades" style="grid-template-columns:1fr 1fr"><button class="g0" data-g="0">La he fallado</button><button class="g3" data-g="2">Me la sabía</button></div>`
-        : `<p class="note">¿Qué tal te la sabías?</p><div class="grades">
-          <button class="g0" data-g="0">Otra vez<small>${ivLabel(iv[0])}</small></button>
-          <button data-g="1">Difícil<small>${ivLabel(iv[1])}</small></button>
-          <button data-g="2">Bien<small>${ivLabel(iv[2])}</small></button>
-          <button class="g3" data-g="3">Fácil<small>${ivLabel(iv[3])}</small></button></div>`)
-        : `<button class="primary" id="showans">Ver respuesta</button>`}
+      <div id="cardctl">${cardCtl(c)}</div>
     </div>`;
+  attachSwipe();
+  if (autoRead() && !rs.flipped) sayOnce(c.front);
+}
+function cardCtl(c) {
+  if (!rs.flipped) return `<button class="primary big wide" id="showans">Ver respuesta</button>`;
+  const iv = nextIntervals(c);
+  return (rs.practice
+    ? `<div class="grades" style="grid-template-columns:1fr 1fr"><button class="g0" data-g="0">La he fallado</button><button class="g3" data-g="2">Me la sabía</button></div>`
+    : `<p class="note">¿Qué tal te la sabías?</p><div class="grades">
+      <button class="g0" data-g="0">Otra vez<small>${ivLabel(iv[0])}</small></button>
+      <button data-g="1">Difícil<small>${ivLabel(iv[1])}</small></button>
+      <button data-g="2">Bien<small>${ivLabel(iv[2])}</small></button>
+      <button class="g3" data-g="3">Fácil<small>${ivLabel(iv[3])}</small></button></div>`)
+    + `<p class="note center">También puedes deslizar la tarjeta: a la derecha si te la sabías, a la izquierda si no.</p>`;
+}
+function flipCard() {
+  if (!rs || rs.flipped) return;
+  const { c } = findCard(rs.queue[rs.i]); if (!c) return;
+  rs.flipped = true;
+  const el = $("flipcard");
+  el.classList.add("flip"); el.querySelector(".back").setAttribute("aria-hidden", "false");
+  el.setAttribute("aria-label", "Respuesta: " + c.back);
+  $("cardctl").innerHTML = cardCtl(c);
+  if (autoRead()) sayOnce(c.back);
+}
+// Deslizar la tarjeta: derecha = me la sabía, izquierda = otra vez.
+function attachSwipe() {
+  const el = $("flipcard"); if (!el) return;
+  let x0 = null, dx = 0;
+  el.addEventListener("pointerdown", (e) => { if (!rs?.flipped) return; x0 = e.clientX; dx = 0; el.style.transition = "none"; });
+  el.addEventListener("pointermove", (e) => {
+    if (x0 === null) return;
+    dx = e.clientX - x0;
+    if (Math.abs(dx) > 10) { try { el.setPointerCapture(e.pointerId); } catch (err) {} }
+    el.style.transform = `perspective(1200px) translateX(${dx}px) rotate(${dx / 25}deg) rotateY(180deg)`;
+    el.classList.toggle("yes", dx > 70); el.classList.toggle("no", dx < -70);
+  });
+  const end = () => {
+    if (x0 === null) return;
+    x0 = null; el.style.transition = ""; el.style.transform = ""; el.classList.remove("yes", "no");
+    if (Math.abs(dx) > 10) swallowClick = true;
+    if (dx > 90) gradeCurrent(2); else if (dx < -90) gradeCurrent(0);
+  };
+  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
 }
 function gradeCurrent(g) {
   const ref = rs.queue[rs.i];
   const { n, c } = findCard(ref);
   if (!c) return;
+  markStudyDay();
   if (rs.practice) {
     if (g === 0) rs.queue.push(ref); else { rs.done++; if (!ref.missed) rs.right++; }
     if (g === 0) ref.missed = true;
   } else {
+    const wasNew = isNew(c);
     gradeCard(c, g);
+    if (wasNew) bumpNewToday();
     if (g === 0) rs.queue.push(ref); else rs.done++;
     saveNote(n);
   }
@@ -1002,7 +1293,7 @@ function ensureKey() {
   openSettings(); $("keyinput").focus(); toast("Primero conecta Gemini");
   return false;
 }
-function openSettings() { $("settings").hidden = false; renderStorage(); $("settings").scrollIntoView({ behavior: "smooth", block: "start" }); }
+function openSettings() { $("settings").hidden = false; renderPrefs(); renderStorage(); $("settings").scrollIntoView({ behavior: "smooth", block: "start" }); }
 async function addFiles(files) {
   if (!files.length) return;
   let subject = $("target").value;
@@ -1025,6 +1316,10 @@ async function runAI(n, what) {
     if (what === "resumen") {
       const text = await generate(n, { prompt: SUMMARY_PROMPTS[sumMode], system: TEACHER, onText: streamTo(n, "resumen") });
       n.summary = { mode: sumMode, text, at: Date.now() };
+    } else if (what === "podcast") {
+      const text = await generate(n, { prompt: PODCAST_PROMPT, system: TEACHER, onText: streamTo(n, "podcast", "audio") });
+      n.podcast = { text, at: Date.now() };
+      audioSrc = "podcast"; rd.key = null;
     } else if (what === "video") {
       const script = parseJSON(await generate(n, { prompt: VIDEO_PROMPT, schema: VIDEO_SCHEMA, system: TEACHER }), "el vídeo");
       script.scenes = (script.scenes || []).filter(s => s.heading && s.narration);
@@ -1049,7 +1344,7 @@ async function runAI(n, what) {
       answers[n.id] = []; recorded[n.id] = false;
     }
     await saveNote(n);
-    toast({ resumen: "Resumen listo", quiz: "Test listo", mapa: "Mapa listo", video: "Vídeo listo", tarjetas: "Tarjetas listas" }[what]);
+    toast({ podcast: "Explicación lista", resumen: "Resumen listo", quiz: "Test listo", mapa: "Mapa listo", video: "Vídeo listo", tarjetas: "Tarjetas listas" }[what]);
   } catch (e) {
     lastError = { id: n.id, what, msg: e instanceof AIError ? e.message : "Algo ha fallado: " + (e.message || e) };
   } finally {
@@ -1160,8 +1455,22 @@ async function copyKeyLink() {
 
 // ---------- Eventos ----------
 document.addEventListener("click", async (e) => {
+  if (swallowClick) { swallowClick = false; if (e.target.closest("#flipcard")) return; }
+  const si = e.target.closest("[data-si]"); if (si) { rdJump(+si.dataset.si); if (!rd.playing) rdPlay(); return; }
+  const stage = e.target.closest("#vstage"); if (stage) { const nn = notes.find(x => x.id === openId); if (nn?.video) vToggle(nn); return; }
   const t = e.target.closest("button"); if (!t) return;
   const n = notes.find(x => x.id === openId);
+  // ajustes personales
+  if (t.dataset.color) { ls.set("color", t.dataset.color); applyPrefs(); renderPrefs(); return; }
+  if (t.dataset.pref) {
+    const k = t.dataset.pref, v = t.dataset.val; ls.set(k, v);
+    if (k === "resumen-defecto") sumMode = v;
+    if (k === "preguntas-defecto") quizCount = +v;
+    applyPrefs(); renderPrefs(); renderTop(); renderSubjTools();
+    if (mode === "note" && (view === "tarjetas" || view === "quiz" || view === "resumen")) renderViewer();
+    return;
+  }
+  if (t.id === "voicetest") { sayOnce("Hola Erika, así sonarán tus resúmenes y tus vídeos."); return; }
   // cabecera y ajustes
   if (t.id === "reviewbtn") { startReview(notes, "Repaso de hoy"); return; }
   if (t.id === "settingsbtn") { if ($("settings").hidden) openSettings(); else $("settings").hidden = true; return; }
@@ -1201,7 +1510,8 @@ document.addEventListener("click", async (e) => {
     confirming = editing = false; renderList(); renderViewer(); showViewer(); return;
   }
   // repaso
-  if (t.id === "flipcard" || t.id === "showans") { if (!rs.flipped) { rs.flipped = true; renderReview(); } return; }
+  if (t.id === "flipcard" || t.id === "showans") { flipCard(); return; }
+  if (t.id === "cardspeak" && rs) { const { c } = findCard(rs.queue[rs.i]); if (c) sayOnce(rs.flipped ? c.back : c.front); return; }
   if (t.dataset.g !== undefined && rs) { gradeCurrent(+t.dataset.g); return; }
   if (t.id === "endreview" || t.id === "endreview2") { rs = null; mode = "note"; renderViewer(); renderList(); renderTop(); return; }
   // examen
@@ -1210,7 +1520,7 @@ document.addEventListener("click", async (e) => {
   if (!n) return;
   // apunte abierto
   if (t.id === "backlist") { $("listcol").scrollIntoView({ behavior: "smooth", block: "start" }); return; }
-  if (t.dataset.v) { stopSpeak(); vStop(); view = t.dataset.v; lastError = null; renderViewer(); return; }
+  if (t.dataset.v) { stopSpeak(); vStop(); cardEdit = null; view = t.dataset.v; lastError = null; renderViewer(); return; }
   if (t.id === "editbtn") { editing = !editing; confirming = false; renderEdit(n); renderConfirm(); if (editing) $("editname").focus(); return; }
   if (t.id === "editcancel") { editing = false; renderEdit(n); return; }
   if (t.id === "delbtn" && busy?.id === n.id) { toast("Espera a que Gemini termine con este apunte."); return; }
@@ -1224,7 +1534,21 @@ document.addEventListener("click", async (e) => {
   }
   if (t.id === "gosum") { runAI(n, "resumen"); return; }
   if (t.dataset.sm) { sumMode = t.dataset.sm; renderViewer(); return; }
-  if (t.id === "speakbtn") { if (speaking === n.id) stopSpeak(); else speak(n); renderViewer(); return; }
+  if (t.id === "speakbtn") { view = "audio"; audioSrc = "resumen"; await renderViewer(); rdPlay(); return; }
+  // audio
+  if (t.dataset.as) { rdStop(); audioSrc = t.dataset.as; lastError = null; renderViewer(); return; }
+  if (t.id === "gopodcast") { rdStop(); runAI(n, "podcast"); return; }
+  if (t.id === "rdplay") { if (rd.playing) rdStop(); else rdPlay(); return; }
+  if (t.id === "rdprev" || t.id === "rdnext") { rdJump(rd.i + (t.id === "rdnext" ? 1 : -1)); return; }
+  // tarjetas
+  if (t.id === "listencards") { view = "audio"; audioSrc = "tarjetas"; await renderViewer(); rdPlay(); return; }
+  if (t.id === "cardaddtoggle") { cardAdd = !cardAdd; renderViewer(); if (cardAdd) $("cafront").focus(); return; }
+  if (t.dataset.ce) { cardEdit = t.dataset.ce; renderViewer(); $("cefront")?.focus(); return; }
+  if (t.id === "cecancel") { cardEdit = null; renderViewer(); return; }
+  if (t.dataset.cd) {
+    if (!t.dataset.sure) { t.dataset.sure = "1"; t.textContent = "¿Seguro?"; return; }
+    n.cards = (n.cards || []).filter(k => k.id !== t.dataset.cd); await saveNote(n); renderViewer(); renderTop(); renderList(); toast("Tarjeta borrada"); return;
+  }
   if (t.id === "copysum") { try { await navigator.clipboard.writeText(n.summary.text); toast("Resumen copiado"); } catch (err) { toast("No se pudo copiar"); } return; }
   if (t.id === "goquiz" || t.id === "goquiz2") { runAI(n, "quiz"); return; }
   if (t.dataset.qc) { quizCount = +t.dataset.qc; renderViewer(); return; }
@@ -1238,11 +1562,9 @@ document.addEventListener("click", async (e) => {
   if (t.id === "gomap") { runAI(n, "mapa"); return; }
   if (t.dataset.mm) { mapMode = t.dataset.mm; renderViewer(); return; }
   if (t.id === "govideo") { vStop(); runAI(n, "video"); return; }
-  if (t.id === "vplay" && n.video) {
-    if (vp.playing) { vStop(); vDraw(n, false); }
-    else { stopSpeak(); if (vp.ended) vp.i = 0; vp.playing = true; vp.ended = false; vPlayScene(n); }
-    return;
-  }
+  if (t.id === "vplay" && n.video) { vToggle(n); return; }
+  if (t.id === "vfull") { vFullscreen(); return; }
+  if (t.dataset.vs !== undefined && n.video) { vp.i = +t.dataset.vs; vp.ended = false; if (vp.playing) vPlayScene(n); else { vClear(); vDraw(n, false); } return; }
   if ((t.id === "vnext" || t.id === "vprev") && n.video) {
     const max = n.video.script.scenes.length - 1;
     vp.i = Math.min(max, Math.max(0, vp.i + (t.id === "vnext" ? 1 : -1))); vp.ended = false;
@@ -1253,16 +1575,16 @@ document.addEventListener("click", async (e) => {
   if (t.id === "clearchat") { n.chat = []; await saveNote(n); renderViewer(); return; }
 });
 document.addEventListener("change", (e) => {
-  if (e.target.id === "rate") {
-    speakRate = +e.target.value; ls.set("velocidad-voz", String(speakRate));
-    const n = notes.find(x => x.id === openId);
-    if (n && speaking === n.id) speak(n);
-  }
+  const n = notes.find(x => x.id === openId);
+  if (e.target.id === "rate") { setRate(+e.target.value); if (rd.playing) rdPlay(); }
+  if (e.target.id === "vrate") { setRate(+e.target.value); if (vp.playing && n?.video) vPlayScene(n); }
+  if (e.target.id === "prefrate") setRate(+e.target.value);
+  if (e.target.id === "voicesel") { ls.set("voz", e.target.value); pickVoice(); sayOnce("Así suena esta voz."); }
   if (e.target.id === "restorefile" && e.target.files[0]) { readBackup(e.target.files[0]); e.target.value = ""; }
 });
 document.addEventListener("submit", async (e) => {
   const id = e.target.id;
-  if (["renameform", "editform", "askform", "keyform", "newsubj"].includes(id)) e.preventDefault(); else return;
+  if (["renameform", "editform", "askform", "keyform", "newsubj", "cardeditform", "cardaddform"].includes(id)) e.preventDefault(); else return;
   const n = notes.find(x => x.id === openId);
   if (id === "keyform") {
     const raw = $("keyinput").value.trim(); if (!raw) return;
@@ -1282,14 +1604,25 @@ document.addEventListener("submit", async (e) => {
     const name = $("editname").value.trim(); if (!name) return;
     n.name = name; n.subject = $("editsubj").value || n.subject;
     await saveNote(n); editing = false; render(); toast("Apunte guardado");
+  } else if (id === "cardeditform" && n) {
+    const k = (n.cards || []).find(x => x.id === e.target.dataset.card);
+    const f = $("cefront").value.trim(), b = $("ceback").value.trim();
+    if (k && f && b) { k.front = f; k.back = b; await saveNote(n); }
+    cardEdit = null; renderViewer(); toast("Tarjeta guardada");
+  } else if (id === "cardaddform" && n) {
+    const f = $("cafront").value.trim(), b = $("caback").value.trim();
+    if (!f || !b) { toast("Escribe la pregunta y la respuesta"); return; }
+    n.cards = [...(n.cards || []), newCard(f, b)]; await saveNote(n);
+    renderViewer(); renderTop(); renderList(); $("cafront")?.focus(); toast("Tarjeta añadida");
   } else if (id === "askform" && n) {
     const q = $("askinput").value; $("askinput").value = ""; ask(n, q);
   }
 });
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("player")?.classList.contains("theater")) { vFullscreen(); return; }
   if (e.target.id === "askinput" && e.key === "Enter" && !e.shiftKey && !isPhone()) { e.preventDefault(); $("askform").requestSubmit(); }
   if (mode === "review" && rs && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) {
-    if (e.key === " " && !rs.flipped) { e.preventDefault(); rs.flipped = true; renderReview(); }
+    if (e.key === " " && !rs.flipped) { e.preventDefault(); flipCard(); }
     else if (rs.flipped && /^[1-4]$/.test(e.key)) gradeCurrent(rs.practice ? (e.key === "1" ? 0 : 2) : +e.key - 1);
   }
 });
@@ -1303,6 +1636,7 @@ drop.addEventListener("drop", (e) => { e.preventDefault(); addFiles([...e.dataTr
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { renderTop(); renderList(); } });
 
 // ---------- Arranque ----------
+applyPrefs();
 (async () => {
   readKeyFromLink();
   await openDB();

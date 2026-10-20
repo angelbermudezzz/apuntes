@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2026-10-20f";
+const APP_VERSION = "2026-10-20g";
 
 // ---------- Almacenamiento (IndexedDB, con memoria como respaldo) ----------
 const mem = { subjects: [], notes: [] };
@@ -826,15 +826,64 @@ function errHtml(n, what) { return lastError && lastError.id === n.id && lastErr
 const isBusyWith = (n, what) => busy && busy.id === n.id && busy.what === what;
 const noKeyHint = () => ls.get("gemini-key") ? "" : `<p class="note">Para crear esto hace falta conectar Gemini en «Ajustes».</p>`;
 
+// Visor de fotos a pantalla completa: zoom con dos dedos, rueda o doble toque; arrastrar para moverse; girar.
+const photoView = { url: null };
+function openPhoto(src) {
+  let lb = $("lightbox");
+  if (!lb) {
+    lb = document.createElement("div"); lb.id = "lightbox"; lb.setAttribute("role", "dialog"); lb.setAttribute("aria-label", "Foto en grande");
+    lb.innerHTML = `<div class="lbstage"><img alt=""></div><div class="lbbar"><button id="lbout" aria-label="Alejar">−</button><button id="lbin" aria-label="Acercar">+</button><button id="lbrot" aria-label="Girar">⟳</button><button id="lbfit">Ajustar</button><button id="lbclose" aria-label="Cerrar">✕</button></div>`;
+    document.body.appendChild(lb);
+    const st = lb.querySelector(".lbstage"), im = lb.querySelector("img");
+    const v = lb.v = { s: 1, x: 0, y: 0, r: 0 };
+    const draw = () => { im.style.transform = `translate(${v.x}px,${v.y}px) scale(${v.s}) rotate(${v.r}deg)`; };
+    lb.fit = () => { v.s = 1; v.x = v.y = 0; draw(); };
+    const zoomAt = (f, cx, cy) => {
+      const ns = Math.min(8, Math.max(1, v.s * f)), k = ns / v.s;
+      const r = st.getBoundingClientRect(), ox = cx - r.left - r.width / 2, oy = cy - r.top - r.height / 2;
+      v.x = ox - (ox - v.x) * k; v.y = oy - (oy - v.y) * k; v.s = ns; if (ns === 1) v.x = v.y = 0; draw();
+    };
+    lb.zoom = (f) => { const r = st.getBoundingClientRect(); zoomAt(f, r.left + r.width / 2, r.top + r.height / 2); };
+    lb.rot = () => { v.r = (v.r + 90) % 360; draw(); };
+    lb.draw = draw;
+    const pts = new Map(); let last = null, tapAt = 0;
+    st.addEventListener("pointerdown", (e) => { st.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); last = null;
+      if (pts.size === 1) { const now = Date.now(); if (now - tapAt < 300) zoomAt(v.s > 1.2 ? 1 / v.s : 2.5, e.clientX, e.clientY); tapAt = now; } });
+    st.addEventListener("pointermove", (e) => {
+      if (!pts.has(e.pointerId)) return;
+      const prev = pts.get(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pts.size === 2) {
+        const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        if (last) zoomAt(d / last, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); last = d;
+      } else if (pts.size === 1 && v.s > 1) { v.x += e.clientX - prev[0]; v.y += e.clientY - prev[1]; draw(); }
+    });
+    const up = (e) => { pts.delete(e.pointerId); last = null; };
+    st.addEventListener("pointerup", up); st.addEventListener("pointercancel", up);
+    st.addEventListener("wheel", (e) => { e.preventDefault(); zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY); }, { passive: false });
+  }
+  lb.querySelector("img").src = src; lb.v.r = 0; lb.fit(); lb.hidden = false; document.documentElement.classList.add("lbopen");
+  history.pushState({ lb: 1 }, ""); $("lbclose").focus();
+}
+function closePhoto(fromHistory) {
+  const lb = $("lightbox"); if (!lb || lb.hidden) return;
+  lb.hidden = true; document.documentElement.classList.remove("lbopen");
+  if (!fromHistory && history.state?.lb) history.back();
+}
+window.addEventListener("popstate", () => closePhoto(true));
 const pdfView = { pdf: null, io: null, cleanup() { this.io?.disconnect(); this.pdf?.destroy(); this.pdf = this.io = null; } };
 async function renderOriginal(n) {
   const c = $("content");
   c.innerHTML = `<p class="sub">Cargando…</p>`;
   try {
     if (n.kind === "img") {
-      const img = new Image(); img.alt = n.name; img.className = "orig"; img.src = URL.createObjectURL(n.blob);
-      img.onload = () => URL.revokeObjectURL(img.src);
-      c.replaceChildren(img);
+      if (photoView.url) URL.revokeObjectURL(photoView.url);
+      const url = URL.createObjectURL(n.blob);
+      c.innerHTML = `<div class="photobox"><button class="photoopen" id="photoopen" aria-label="Ver la foto en grande"><img class="orig" alt="${esc(n.name)}"></button>
+        <div class="actions"><button class="small" id="photozoom">🔍 Ver en grande</button></div>
+        <p class="note">Toca la foto para verla a pantalla completa. Con dos dedos (o la rueda del ratón) haces zoom.</p></div>`;
+      const img = c.querySelector("img.orig");
+      img.onerror = () => { c.innerHTML = `<p class="note">Este navegador no puede mostrar esta foto (seguramente es HEIC del iPhone). Gemini sí la lee, así que puedes crear el resumen, el test y lo demás. Para verla aquí, súbela otra vez como JPG o haz una captura de pantalla de ella.</p>`; };
+      img.src = url; photoView.url = url;
     } else if (n.kind === "txt" || n.kind === "docx") {
       const t = (await noteText(n)).trim();
       if (openId !== n.id || view !== "apunte") return;
@@ -1555,6 +1604,18 @@ function ensureKey() {
   return false;
 }
 function openSettings() { $("settings").hidden = false; renderPrefs(); renderStorage(); renderSyncStatus(); $("settings").scrollIntoView({ behavior: "smooth", block: "start" }); }
+// Las fotos se guardan ya giradas, en JPEG y a un tamaño que se lee bien (los HEIC del iPhone no se ven en todos lados).
+async function normalizePhoto(f) {
+  try {
+    const bmp = await createImageBitmap(f, { imageOrientation: "from-image" });
+    const k = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+    if (k === 1 && /jpe?g|png|webp/.test(f.type) && f.size < 2.5 * 1048576) { bmp.close?.(); return f; }
+    const cv = document.createElement("canvas"); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+    const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(bmp, 0, 0, cv.width, cv.height); bmp.close?.();
+    const b = await new Promise(r => cv.toBlob(r, "image/jpeg", 0.88)); cv.width = cv.height = 0;
+    return b && b.size ? b : f;
+  } catch (e) { return f; }
+}
 async function addFiles(files) {
   if (!files.length) return;
   let subject = $("target").value;
@@ -1562,6 +1623,7 @@ async function addFiles(files) {
   let last = null, ok = 0;
   for (const f of files) {
     const n = { id: uid(), subject, name: baseName(f.name), kind: kindOf(f), size: f.size, added: Date.now(), blob: f };
+    if (n.kind === "img") { n.blob = await normalizePhoto(f); n.size = n.blob.size; }
     if (n.kind === "txt") n.docText = await f.text().catch(() => undefined); // para poder buscar dentro
     try { await put("notes", n); notes.push(n); last = n.id; ok++; } catch (e) { toast("No se pudo guardar " + f.name + ". Puede que el móvil no tenga espacio."); }
   }
@@ -1913,6 +1975,12 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.bgpanels) { setBg({ panels: t.dataset.bgpanels }); renderPrefs(); return; }
   if (t.id === "bggrad") { const b = bgCfg(); setBg(b.color2 ? { color2: null } : { color: b.color || "#f6f8fb", color2: mix(b.color || "#f6f8fb", "#c9b8ff", 0.35) }); renderPrefs(); return; }
   if (t.id === "bgphotodel") { ls.del("fondo-foto"); applyPrefs(); renderPrefs(); return; }
+  if (t.id === "photoopen" || t.id === "photozoom") { if (photoView.url) openPhoto(photoView.url); return; }
+  if (t.id === "lbclose") { closePhoto(); return; }
+  if (t.id === "lbin") { $("lightbox").zoom(1.5); return; }
+  if (t.id === "lbout") { $("lightbox").zoom(1 / 1.5); return; }
+  if (t.id === "lbrot") { $("lightbox").rot(); return; }
+  if (t.id === "lbfit") { $("lightbox").fit(); return; }
   if (t.id === "bgreset") { ls.del("fondo"); ls.del("fondo-foto"); applyPrefs(); renderPrefs(); toast("Fondo normal"); return; }
   if (t.dataset.color) { ls.set("color", t.dataset.color); applyPrefs(); renderPrefs(); return; }
   if (t.dataset.pref) {
@@ -2126,6 +2194,7 @@ document.addEventListener("submit", async (e) => {
   }
 });
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("lightbox") && !$("lightbox").hidden) { closePhoto(); return; }
   if (e.key === "Escape" && $("player")?.classList.contains("theater")) { vFullscreen(); return; }
   if (e.target.id === "askinput" && e.key === "Enter" && !e.shiftKey && !isPhone()) { e.preventDefault(); $("askform").requestSubmit(); }
   if (mode === "review" && rs && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) {

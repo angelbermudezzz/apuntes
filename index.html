@@ -3,216 +3,98 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Apuntes de Erika</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Los apuntes de Erika, con resúmenes, quizzes, tarjetas, mapas y vídeos.">
+<meta name="theme-color" content="#2b4fd8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Apuntes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<script defer src="app.js"></script>
 </head>
 <body>
-<title>Apuntes de Erika</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
-<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
-<style>
-/* Layout: una columna tipo cuaderno; pestañas de asignaturas arriba, lista de apuntes, y el apunte abierto debajo (dos columnas en pantallas anchas). */
-:root {
-  --paper: #f6f8fb;
-  --sheet: #ffffff;
-  --ink: #1d2a44;
-  --ink-soft: #5a6684;
-  --line: #dbe1ec;
-  --accent: #2b4fd8;
-  --accent-ink: #ffffff;
-  --marker: #ffe45c;
-  --danger: #c2352b;
-  --ok: #1d7f4e;
-  --ok-bg: #e3f5ea;
-  --bad-bg: #fbe6e4;
-  --m0: #e4eaff; --m1: #ffefc2; --m2: #dff3e6; --m3: #fde2dc; --m4: #ece2fb; --m5: #d9f1f6;
-  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
-  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
-  --r: 12px;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #11161f; --sheet: #19202c; --ink: #e7ebf3; --ink-soft: #9aa6bf; --line: #2b3445;
-    --accent: #7d97ff; --accent-ink: #0d1324; --marker: #8a7a1c; --danger: #ff8a7f;
-    --ok: #6fd6a0; --ok-bg: #173527; --bad-bg: #3d1f1d; color-scheme: dark;
-    --m0: #26305a; --m1: #463c17; --m2: #1d3a2a; --m3: #48271f; --m4: #352a4d; --m5: #1b3d45;
-  }
-}
-:root[data-theme="dark"] {
-  --paper: #11161f; --sheet: #19202c; --ink: #e7ebf3; --ink-soft: #9aa6bf; --line: #2b3445;
-  --accent: #7d97ff; --accent-ink: #0d1324; --marker: #8a7a1c; --danger: #ff8a7f;
-  --ok: #6fd6a0; --ok-bg: #173527; --bad-bg: #3d1f1d; color-scheme: dark;
-  --m0: #26305a; --m1: #463c17; --m2: #1d3a2a; --m3: #48271f; --m4: #352a4d; --m5: #1b3d45;
-}
-* { box-sizing: border-box; }
-body {
-  background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5;
-  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: 20px 48px;
-}
-.wrap { max-width: 1100px; margin: 0 auto; display: grid; gap: 20px; }
-h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
-h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); font-weight: 700; letter-spacing: -0.01em; }
-h1 mark { background: linear-gradient(transparent 55%, var(--marker) 55%); color: inherit; padding: 0 .1em; }
-h2 { font-size: 1.25rem; font-weight: 700; }
-.sub { color: var(--ink-soft); margin: 4px 0 0; }
-a { color: var(--accent); }
-header { display: flex; gap: 12px; justify-content: space-between; align-items: start; flex-wrap: wrap; }
-header > div { min-width: 0; flex: 1 1 260px; }
-button, .btn { font: inherit; cursor: pointer; border-radius: 999px; border: 1px solid var(--line); background: var(--sheet); color: var(--ink); padding: 8px 16px; min-height: 40px; }
-button:focus-visible, input:focus-visible, select:focus-visible, label.drop:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
-.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
-.ghost { background: transparent; }
-.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
-button:disabled { opacity: .55; cursor: not-allowed; }
-.keydot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--danger); margin-right: 8px; vertical-align: middle; }
-.keydot.on { background: var(--ok); }
-
-.panel { background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 10px; }
-.panel ol { margin: 0; padding-left: 1.2em; color: var(--ink-soft); }
-.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.row input { flex: 1 1 220px; min-width: 0; }
-
-.tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
-.tab { white-space: nowrap; }
-.tab[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.tab .n { font-variant-numeric: tabular-nums; opacity: .7; margin-left: 6px; font-size: .85em; }
-.newsubj { display: flex; gap: 8px; flex-wrap: wrap; }
-.newsubj input { flex: 1 1 180px; min-width: 0; }
-input[type="text"], input[type="password"], select { font: inherit; color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-height: 40px; }
-
-label.drop {
-  display: grid; gap: 4px; place-items: center; text-align: center; padding: 24px 16px;
-  border: 2px dashed var(--line); border-radius: var(--r); background: var(--sheet); cursor: pointer;
-}
-label.drop.over { border-color: var(--accent); }
-label.drop strong { font-family: var(--font-display); font-size: 1.1rem; }
-label.drop small { color: var(--ink-soft); }
-label.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.uprow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--ink-soft); font-size: .95rem; }
-
-.main { display: grid; gap: 20px; grid-template-columns: 1fr; }
-@media (min-width: 860px) { .main { grid-template-columns: minmax(260px, 340px) 1fr; align-items: start; } }
-.list { display: grid; gap: 8px; }
-.item {
-  display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: center; text-align: left;
-  border-radius: var(--r); padding: 10px 12px; width: 100%;
-}
-.item[aria-current="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
-.item > div { min-width: 0; }
-.item .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
-.item .meta { color: var(--ink-soft); font-size: .85rem; }
-.kind { width: 44px; height: 52px; border-radius: 6px; display: grid; place-items: center; font-size: .72rem; font-weight: 700; letter-spacing: .06em; border: 1px solid var(--line); background: var(--paper); }
-.empty { color: var(--ink-soft); padding: 16px; border: 1px dashed var(--line); border-radius: var(--r); }
-
-.viewer { background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r); padding: 20px; display: grid; gap: 16px; min-width: 0; }
-.vhead { display: flex; gap: 12px; justify-content: space-between; align-items: start; flex-wrap: wrap; }
-.vhead > div { min-width: 0; }
-.vhead h2 { overflow-wrap: anywhere; }
-.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.vtabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line); }
-.vtab { border: 0; border-radius: 0; background: transparent; padding: 8px 10px; border-bottom: 3px solid transparent; color: var(--ink-soft); font-weight: 700; }
-.vtab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
-.content { max-height: 72vh; overflow: auto; }
-.content .text { white-space: pre-wrap; max-width: 68ch; overflow-wrap: anywhere; }
-.content img, .content canvas { max-width: 100%; height: auto; display: block; margin: 0 auto 12px; border-radius: 6px; border: 1px solid var(--line); }
-.md { max-width: 68ch; overflow-wrap: anywhere; }
-.md h1, .md h2, .md h3 { margin: 1em 0 .4em; font-size: 1.15rem; }
-.md h1:first-child, .md h2:first-child, .md h3:first-child { margin-top: 0; }
-.md strong { background: linear-gradient(transparent 60%, var(--marker) 60%); }
-.md ul, .md ol { padding-left: 1.3em; }
-.md table { border-collapse: collapse; display: block; overflow-x: auto; }
-.md td, .md th { border: 1px solid var(--line); padding: 4px 8px; }
-.confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px; border-radius: 10px; border: 1px solid var(--danger); }
-.example { display: inline-block; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; background: var(--marker); color: var(--ink); padding: 1px 8px; border-radius: 999px; margin-left: 6px; vertical-align: middle; font-family: var(--font-body); }
-.note { color: var(--ink-soft); font-size: .9rem; }
-.err { border: 1px solid var(--danger); color: var(--ink); border-radius: 10px; padding: 12px; }
-.busy { display: flex; gap: 10px; align-items: center; color: var(--ink-soft); padding: 12px 0; }
-.spin { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--accent); animation: sp 0.9s linear infinite; }
-@keyframes sp { to { transform: rotate(360deg); } }
-
-.score { font-family: var(--font-display); font-size: 1.1rem; font-variant-numeric: tabular-nums; }
-.qlist { display: grid; gap: 16px; list-style: none; padding: 0; margin: 0; max-width: 72ch; }
-.q { display: grid; gap: 8px; }
-.q p { margin: 0; font-weight: 700; }
-.q .num { color: var(--ink-soft); font-variant-numeric: tabular-nums; margin-right: 6px; }
-.opt { text-align: left; border-radius: 10px; width: 100%; }
-.opt.right { background: var(--ok-bg); border-color: var(--ok); }
-.opt.wrong { background: var(--bad-bg); border-color: var(--danger); }
-.expl { font-size: .95rem; padding: 8px 12px; border-left: 3px solid var(--line); color: var(--ink-soft); }
-.mapwrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
-.mapwrap svg { display: block; }
-.mapwrap .link { fill: none; stroke: var(--ink-soft); stroke-opacity: .45; stroke-width: 1.5; }
-.mapwrap rect { stroke: var(--line); }
-.mapwrap .root rect { fill: var(--accent); stroke: var(--accent); }
-.mapwrap .root text { fill: var(--accent-ink); font-weight: 700; }
-.mapwrap text { fill: var(--ink); font-family: var(--font-body); font-size: 13px; }
-.mapwrap .d1 text { font-weight: 700; }
-.mapwrap .d3 rect { fill: var(--sheet); }
-.b0 rect { fill: var(--m0); } .b1 rect { fill: var(--m1); } .b2 rect { fill: var(--m2); }
-.b3 rect { fill: var(--m3); } .b4 rect { fill: var(--m4); } .b5 rect { fill: var(--m5); }
-.outline { max-width: 72ch; display: grid; gap: 12px; }
-.outline section { border-left: 4px solid var(--line); padding-left: 12px; }
-.outline section.b0 { border-color: var(--accent); } .outline section.b1 { border-color: #d8a400; } .outline section.b2 { border-color: var(--ok); }
-.outline section.b3 { border-color: var(--danger); } .outline section.b4 { border-color: #8a5cd1; } .outline section.b5 { border-color: #2a9bb3; }
-.outline h3 { font-size: 1.05rem; }
-.outline ul { margin: 6px 0 0; padding-left: 1.2em; }
-.outline .lvl { color: var(--ink-soft); font-variant-numeric: tabular-nums; margin-right: 6px; }
-.player { display: grid; gap: 10px; max-width: 760px; }
-.stage {
-  container-type: inline-size; aspect-ratio: 16 / 9; max-width: 100%; border-radius: 12px; overflow: hidden;
-  background: var(--ink); color: var(--paper); display: grid; align-content: center; gap: 3cqw; padding: 5cqw 6cqw; position: relative;
-}
-.stage .scn { font-size: 3.2cqw; letter-spacing: .08em; text-transform: uppercase; opacity: .7; position: absolute; top: 3.5cqw; left: 6cqw; font-variant-numeric: tabular-nums; }
-.stage h3 { font-size: 7.4cqw; line-height: 1.15; }
-.stage h3 span { background: linear-gradient(transparent 62%, var(--marker) 62%); color: var(--paper); }
-.stage ul { margin: 0; padding-left: 1.1em; display: grid; gap: 2cqw; font-size: 5cqw; line-height: 1.3; }
-.stage li { opacity: 0; transform: translateY(6px); }
-.stage li.on { opacity: 1; transform: none; }
-@media (prefers-reduced-motion: no-preference) { .stage li { transition: opacity .5s, transform .5s; } .stage .fade { animation: fin .5s; } }
-@keyframes fin { from { opacity: 0; } to { opacity: 1; } }
-.bars { display: flex; gap: 4px; }
-.bars span { flex: 1; height: 5px; border-radius: 3px; background: var(--line); }
-.bars span.done { background: var(--accent); }
-.subs { min-height: 3em; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--paper); padding: 10px 18px; border-radius: 999px; max-width: calc(100% - 32px); z-index: 20; }
-@media (prefers-reduced-motion: no-preference) { .item, button { transition: border-color .15s, background .15s; } }
-@media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
-</style>
-
 <div class="wrap">
-  <header>
+  <header class="top">
     <div>
       <h1>Apuntes de <mark>Erika</mark></h1>
-      <p class="sub">Sube tus apuntes, ordénalos por asignatura y saca resúmenes, quizzes, mapas mentales y vídeos con un toque.</p>
+      <p class="sub">Tus apuntes, con resúmenes, tests, tarjetas, mapas y vídeos.</p>
     </div>
-    <button id="keybtn"><span class="keydot" id="keydot"></span>Conexión con Gemini</button>
+    <div class="topbtns">
+      <button id="reviewbtn" class="primary">Repasar<span class="badge" id="duecount">0</span></button>
+      <button id="settingsbtn"><span class="dot" id="keydot"></span>Ajustes</button>
+    </div>
   </header>
 
-  <section class="panel" id="keypanel" hidden aria-label="Conexión con Gemini">
-    <h2>Conectar con Gemini</h2>
-    <p class="note" style="margin:0">Se hace una sola vez en cada dispositivo. La clave es gratuita y se guarda solo en este navegador.</p>
+  <section class="panel welcome" id="welcome" hidden aria-label="Bienvenida">
+    <h2>Hola, Erika</h2>
+    <p>Esta app es para ti. Así se usa:</p>
     <ol>
-      <li>Entra en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> con una cuenta de Google.</li>
-      <li>Pulsa «Create API key» y copia la clave.</li>
-      <li>Pégala aquí y pulsa «Guardar».</li>
+      <li>Crea tus asignaturas y sube tus apuntes: PDF, Word, texto o fotos.</li>
+      <li>Abre un apunte y elige qué quieres: resumen, test, tarjetas, mapa, vídeo o preguntarle tus dudas.</li>
+      <li>Cada día pulsa «Repasar» para practicar las tarjetas que te tocan.</li>
+      <li>De vez en cuando guarda una copia en «Ajustes», por si cambias de móvil.</li>
     </ol>
-    <form class="row" id="keyform">
-      <input type="password" id="keyinput" placeholder="Pega aquí la clave (empieza por AIza…)" autocomplete="off" aria-label="Clave de Gemini">
-      <button class="primary" type="submit">Guardar</button>
-      <button class="ghost" type="button" id="keyforget">Quitar clave</button>
-    </form>
-    <p class="note" id="keystatus" style="margin:0"></p>
+    <p class="note" id="welcomekey"></p>
+    <div class="actions"><button class="primary" id="welcomeok">Empezar</button></div>
+  </section>
+
+  <div class="banner" id="notice" role="status" hidden></div>
+
+  <div class="banner" id="backupbanner" hidden>
+    <span id="backuptext">Hace tiempo que no guardas una copia de tus apuntes.</span>
+    <span class="actions"><button class="small primary" id="bannerbackup">Guardar copia</button><button class="small ghost" id="bannerlater">Luego</button></span>
+  </div>
+
+  <section class="panel" id="settings" hidden aria-label="Ajustes">
+    <div class="row" style="justify-content:space-between"><h2>Ajustes</h2><button class="small ghost" id="settingsclose">Cerrar</button></div>
+    <section>
+      <h3>Conexión con Gemini</h3>
+      <p class="note" id="keystatus"></p>
+      <ol id="keysteps">
+        <li>Entra en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> con una cuenta de Google.</li>
+        <li>Pulsa «Create API key» y copia la clave.</li>
+        <li>Pégala aquí y pulsa «Guardar».</li>
+      </ol>
+      <form class="row" id="keyform">
+        <input type="password" id="keyinput" placeholder="Pega aquí la clave o el enlace" autocomplete="off" aria-label="Clave de Gemini">
+        <button class="primary" type="submit">Guardar</button>
+      </form>
+      <div class="actions">
+        <button class="small" id="keylink">Copiar enlace para otro móvil</button>
+        <button class="small danger" id="keyforget">Quitar clave</button>
+      </div>
+      <p class="note">El enlace lleva tu clave dentro: al abrirlo en otro móvil, la app queda conectada sin tener que pegar nada. Mándalo solo a quien quieras.</p>
+    </section>
+    <section>
+      <h3>Copia de seguridad</h3>
+      <p class="note">Tus apuntes se guardan solo en este móvil. Guarda una copia de vez en cuando (en Drive, en WhatsApp o en el ordenador) para no perderlos si borras el navegador o cambias de móvil.</p>
+      <p class="note" id="backupstatus"></p>
+      <div class="actions">
+        <button class="primary small" id="backupbtn">Guardar copia</button>
+        <label class="btn small" for="restorefile">Recuperar una copia</label>
+        <input type="file" id="restorefile" accept=".json,application/json" hidden>
+      </div>
+      <div id="restoreconfirm"></div>
+    </section>
+    <section>
+      <h3>Espacio</h3>
+      <p class="note" id="storagestatus">Calculando…</p>
+    </section>
   </section>
 
   <section aria-label="Asignaturas" style="display:grid;gap:10px">
     <div class="tabs" id="tabs"></div>
-    <form class="newsubj" id="newsubj" hidden>
+    <form class="inline-form" id="newsubj" hidden>
       <input type="text" id="subjname" placeholder="Nombre de la asignatura, p. ej. Anatomía" maxlength="40" aria-label="Nombre de la asignatura">
       <button class="primary" type="submit">Crear</button>
       <button class="ghost" type="button" id="cancelsubj">Cancelar</button>
@@ -223,834 +105,24 @@ label.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
   <section aria-label="Subir apuntes" style="display:grid;gap:8px">
     <label class="drop" id="drop">
       <input type="file" id="file" multiple accept=".pdf,.docx,.txt,.md,image/*">
-      <strong>Sube un apunte</strong>
-      <span>Toca aquí o arrastra archivos</span>
-      <small>PDF, Word (.docx), texto o fotos de apuntes</small>
+      <span class="plus" aria-hidden="true">+</span>
+      <span><strong>Subir apuntes</strong><small>PDF, Word, texto o fotos. Toca aquí o arrastra archivos.</small></span>
     </label>
     <div class="uprow">
-      <label for="target">Se guardará en</label>
+      <label for="target">Se guardarán en</label>
       <select id="target"></select>
     </div>
   </section>
 
   <div class="main">
-    <section aria-label="Mis apuntes" style="display:grid;gap:10px;min-width:0">
-      <h2 id="listtitle">Todos los apuntes</h2>
+    <section class="listcol" aria-label="Mis apuntes" id="listcol">
+      <div class="listhead"><h2 id="listtitle">Todos los apuntes</h2></div>
+      <input type="search" id="search" placeholder="Buscar en mis apuntes" aria-label="Buscar en mis apuntes">
       <div class="list" id="list"></div>
     </section>
     <section class="viewer" id="viewer" aria-live="polite"></section>
   </div>
 </div>
-<div class="toast" id="toast" hidden></div>
-
-<script>
-if (window.pdfjsLib) { try { pdfjsLib.GlobalWorkerOptions.workerSrc = ""; } catch (e) {} }
-
-// ---------- Almacenamiento (IndexedDB, con memoria como respaldo) ----------
-const mem = { subjects: [], notes: [] };
-let db = null;
-function openDB() {
-  return new Promise((res) => {
-    try {
-      const r = indexedDB.open("apuntes-erika", 1);
-      r.onupgradeneeded = () => {
-        const d = r.result;
-        d.createObjectStore("subjects", { keyPath: "id" });
-        d.createObjectStore("notes", { keyPath: "id" });
-      };
-      r.onsuccess = () => { db = r.result; res(); };
-      r.onerror = () => res();
-    } catch (e) { res(); }
-  });
-}
-function all(store) {
-  if (!db) return Promise.resolve(mem[store].slice());
-  return new Promise((res) => {
-    try { const q = db.transaction(store).objectStore(store).getAll(); q.onsuccess = () => res(q.result); q.onerror = () => res([]); }
-    catch (e) { res([]); }
-  });
-}
-function put(store, obj) {
-  if (!db) { mem[store] = mem[store].filter(x => x.id !== obj.id).concat(obj); return Promise.resolve(); }
-  return new Promise((res, rej) => {
-    try { const t = db.transaction(store, "readwrite"); t.objectStore(store).put(obj); t.oncomplete = res; t.onerror = () => rej(t.error); }
-    catch (e) { rej(e); }
-  });
-}
-function del(store, id) {
-  if (!db) { mem[store] = mem[store].filter(x => x.id !== id); return Promise.resolve(); }
-  return new Promise((res) => {
-    try { const t = db.transaction(store, "readwrite"); t.objectStore(store).delete(id); t.oncomplete = res; t.onerror = res; }
-    catch (e) { res(); }
-  });
-}
-const ls = {
-  get(k) { try { return localStorage.getItem(k); } catch (e) { return ls.m[k] || null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { ls.m[k] = v; } },
-  del(k) { try { localStorage.removeItem(k); } catch (e) { delete ls.m[k]; } },
-  m: {}
-};
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-
-// ---------- Gemini ----------
-const API = "https://generativelanguage.googleapis.com/v1beta";
-const FALLBACK_MODEL = "gemini-2.5-flash";
-class AIError extends Error { constructor(msg, status) { super(msg); this.status = status || 0; } }
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-async function gfetch(path, opts = {}) { return (await gresponse(path, opts)).json(); }
-async function gresponse(path, opts = {}) {
-  const key = ls.get("gemini-key");
-  if (!key) throw new AIError("Falta conectar con Gemini. Pulsa «Conexión con Gemini» arriba y pega tu clave.");
-  let r;
-  try {
-    r = await fetch(API + path, { ...opts, headers: { "Content-Type": "application/json", "x-goog-api-key": key, ...(opts.headers || {}) } });
-  } catch (e) {
-    throw new AIError("No se pudo conectar con Gemini. Revisa la conexión a internet. Si estás en la versión de prueba privada, aquí no se permite conectar con Google: funcionará en la versión publicada.");
-  }
-  if (!r.ok) {
-    let msg = ""; try { msg = (await r.json()).error?.message || ""; } catch (e) {}
-    if (r.status === 429) throw new AIError("Se ha alcanzado el límite gratuito de Gemini por ahora. Espera un minuto y vuelve a probar; si sigue fallando, el límite diario se renueva mañana.", 429);
-    if (r.status >= 500) throw new AIError("Gemini está saturado ahora mismo (no es un fallo de la app). Espera un par de minutos y vuelve a pulsar el botón.", r.status);
-    if (r.status === 404) throw new AIError("Ese modelo de Gemini ya no está disponible. Vuelve a pulsar el botón.", 404);
-    if (r.status === 400 && /API key/i.test(msg)) throw new AIError("La clave de Gemini no es válida. Vuelve a copiarla desde aistudio.google.com/apikey.");
-    if (r.status === 403) throw new AIError("Gemini ha rechazado la clave. Comprueba que está bien copiada o crea una nueva.");
-    if (r.status === 413 || /too large|exceeds/i.test(msg)) throw new AIError("El archivo es demasiado grande para Gemini. Prueba a dividirlo en partes más pequeñas.");
-    throw new AIError("Gemini ha devuelto un error (" + r.status + "). " + msg, r.status);
-  }
-  return r;
-}
-
-// Modelos Flash de la cuenta gratuita, del mejor al de reserva.
-// Si uno está saturado o sin cupo, se prueba el siguiente.
-async function pickModels() {
-  try { const c = JSON.parse(ls.get("gemini-models") || "null"); if (Array.isArray(c) && c.length) return c; } catch (e) {}
-  let models = [FALLBACK_MODEL];
-  try {
-    const d = await gfetch("/models?pageSize=200");
-    const ver = (n) => parseFloat((n.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]);
-    const names = (d.models || []).filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
-      .map(m => m.name.replace("models/", ""))
-      .filter(n => /^gemini-[\d.]+-flash/.test(n) && !/image|tts|live|audio|thinking|exp|preview/.test(n) && !/-\d{3}$/.test(n));
-    const byVer = (a, b) => ver(b) - ver(a) || a.length - b.length;
-    const full = names.filter(n => !/lite/.test(n)).sort(byVer);
-    const lite = names.filter(n => /lite/.test(n)).sort(byVer);
-    const pool = [...full.slice(0, 3), ...lite.slice(0, 1)];
-    if (pool.length) models = pool;
-  } catch (e) { if (e instanceof AIError && e.status < 500) throw e; }
-  ls.set("gemini-models", JSON.stringify(models));
-  return models;
-}
-
-function toB64(blob) {
-  return new Promise((res, rej) => {
-    const fr = new FileReader();
-    fr.onload = () => res(String(fr.result).split(",")[1]);
-    fr.onerror = () => rej(fr.error);
-    fr.readAsDataURL(blob);
-  });
-}
-// Lo que se manda a Gemini, lo más ligero posible: texto siempre que se pueda
-// (Word, texto y PDF con texto), y las fotos reducidas. Se guarda para no repetirlo.
-async function noteParts(n) {
-  if (n.kind !== "img" && n.kind !== "pdf") return [{ text: "APUNTES:\n\n" + await noteText(n) }];
-  if (n.kind === "pdf") {
-    if (n.pdfText === undefined) {
-      n.pdfText = await pdfToText(n).catch(() => null);
-      put("notes", n).catch(() => {});
-    }
-    if (n.pdfText) return [{ text: "APUNTES (texto sacado de un PDF):\n\n" + n.pdfText }];
-  }
-  let blob = n.blob, mime = n.kind === "pdf" ? "application/pdf" : (n.blob.type || "image/jpeg");
-  if (n.kind === "img") { const small = await shrinkImage(n.blob).catch(() => null); if (small) { blob = small; mime = "image/jpeg"; } }
-  if (blob.size > 18 * 1048576) throw new AIError("Este archivo pesa más de 18 MB y Gemini no lo acepta así. Divídelo en partes más pequeñas.");
-  return [{ inline_data: { mime_type: mime, data: await toB64(blob) } }];
-}
-// Devuelve el texto del PDF, o null si es un escaneo (entonces se manda el PDF entero).
-async function pdfToText(n) {
-  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await n.blob.arrayBuffer()) }).promise;
-  const pages = Math.min(pdf.numPages, 120), out = [];
-  for (let i = 1; i <= pages; i++) {
-    const tc = await (await pdf.getPage(i)).getTextContent();
-    out.push(tc.items.map(it => it.str + (it.hasEOL ? "\n" : " ")).join("").replace(/[ \t]+/g, " ").trim());
-  }
-  const text = out.join("\n\n");
-  return text.replace(/\s/g, "").length >= pages * 120 ? text : null;
-}
-async function shrinkImage(blob) {
-  const bmp = await createImageBitmap(blob);
-  const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
-  if (scale === 1 && blob.size < 1.5 * 1048576) return null;
-  const cv = document.createElement("canvas");
-  cv.width = Math.round(bmp.width * scale); cv.height = Math.round(bmp.height * scale);
-  cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
-  return new Promise(res => cv.toBlob(b => res(b), "image/jpeg", 0.85));
-}
-async function noteText(n) {
-  if (n.kind === "docx") return (await mammoth.extractRawText({ arrayBuffer: await n.blob.arrayBuffer() })).value;
-  return n.blob.text();
-}
-// Sin "pensar" largo: para resumir y hacer tests no hace falta y responde mucho antes.
-function thinkingFor(model) {
-  if (ls.get("nothink-" + model)) return null;
-  return /gemini-2\./.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: "low" };
-}
-// Con onText, el texto llega por partes y se va mostrando mientras se escribe.
-async function generate(n, prompt, schema, onText) {
-  const models = await pickModels();
-  const parts = [...await noteParts(n), { text: prompt }];
-  const bodyFor = (model) => {
-    const cfg = schema ? { responseMimeType: "application/json", responseSchema: schema, temperature: 0.7 } : { temperature: 0.4 };
-    const th = thinkingFor(model); if (th) cfg.thinkingConfig = th;
-    return JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: cfg });
-  };
-  let text = null, lastErr, blocked = false;
-  outer: for (const model of models) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        if (onText) {
-          const r = await gresponse(`/models/${model}:streamGenerateContent?alt=sse`, { method: "POST", body: bodyFor(model) });
-          const reader = r.body.getReader(), dec = new TextDecoder();
-          let buf = "", acc = "";
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buf += dec.decode(value, { stream: true });
-            let i;
-            while ((i = buf.indexOf("\n")) >= 0) {
-              const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-              if (!line.startsWith("data:")) continue;
-              let d; try { d = JSON.parse(line.slice(5)); } catch (e) { continue; }
-              if (d.promptFeedback?.blockReason) blocked = true;
-              const piece = (d.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("");
-              if (piece) { acc += piece; onText(acc); }
-            }
-          }
-          text = acc.trim();
-        } else {
-          const d = await gfetch(`/models/${model}:generateContent`, { method: "POST", body: bodyFor(model) });
-          if (d.promptFeedback?.blockReason) blocked = true;
-          text = (d.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("").trim();
-        }
-        break outer;
-      } catch (e) {
-        lastErr = e;
-        if (!(e instanceof AIError)) throw e;
-        if (e.status === 400 && /thinking/i.test(e.message) && !ls.get("nothink-" + model)) { ls.set("nothink-" + model, "1"); continue; }
-        if (e.status === 404) { ls.del("gemini-models"); break; }
-        if (e.status === 429) break; // cada modelo tiene su propio cupo: se prueba el siguiente
-        if (e.status >= 500) {
-          if (busy && !busy.retry) { busy.retry = true; refreshIfOpen(n.id); }
-          if (attempt === 1) break; // tras dos intentos, se prueba otro modelo
-          await sleep(2500); continue;
-        }
-        throw e;
-      }
-    }
-  }
-  if (text === null) throw lastErr || new AIError("No se pudo conectar con Gemini.");
-  if (!text) throw new AIError(blocked ? "Gemini no ha querido procesar este apunte." : "Gemini no ha devuelto nada. Vuelve a intentarlo.");
-  return text;
-}
-
-const SUMMARY_PROMPTS = {
-  corto: "Eres un profesor que ayuda a una estudiante universitaria. Haz un RESUMEN CORTO de estos apuntes, en el mismo idioma que los apuntes (normalmente español). Máximo 150 palabras. Empieza con una frase que diga de qué trata el tema y luego 4 a 7 viñetas con las ideas clave. Pon en **negrita** los términos más importantes. Usa Markdown. No inventes nada que no esté en los apuntes. Si es una foto difícil de leer, resume lo que se entienda y avisa de lo que no.",
-  detallado: "Eres un profesor que ayuda a una estudiante universitaria. Haz un RESUMEN DETALLADO para estudiar estos apuntes, en el mismo idioma que los apuntes (normalmente español). Organízalo con títulos (##) por apartados, viñetas con las ideas, definiciones y datos clave, y pon en **negrita** los términos importantes. Termina con un apartado «## Lo que no puedes olvidar» con 3 a 5 puntos. Usa Markdown. No inventes nada que no esté en los apuntes. Si es una foto difícil de leer, resume lo que se entienda y avisa de lo que no."
-};
-const QUIZ_SCHEMA = {
-  type: "OBJECT",
-  properties: {
-    questions: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: {
-          question: { type: "STRING" },
-          options: { type: "ARRAY", items: { type: "STRING" } },
-          answer: { type: "INTEGER" },
-          explanation: { type: "STRING" }
-        },
-        required: ["question", "options", "answer", "explanation"]
-      }
-    }
-  },
-  required: ["questions"]
-};
-const quizPrompt = (count) => `Eres un profesor preparando a una estudiante para un examen. Crea un test de ${count} preguntas de opción múltiple sobre estos apuntes, en el mismo idioma que los apuntes (normalmente español). Cada pregunta tiene exactamente 4 opciones y solo una correcta; "answer" es la posición de la correcta empezando en 0. Reparte la posición de la respuesta correcta entre 0, 1, 2 y 3. Mezcla preguntas de memoria con preguntas de comprensión. Las opciones incorrectas deben ser creíbles. "explanation" explica en 1 o 2 frases por qué la correcta es la correcta, basándote en los apuntes. Usa solo información de los apuntes.`;
-
-const MAP_SCHEMA = {
-  type: "OBJECT",
-  properties: {
-    title: { type: "STRING" },
-    branches: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: {
-          title: { type: "STRING" },
-          children: {
-            type: "ARRAY",
-            items: {
-              type: "OBJECT",
-              properties: { title: { type: "STRING" }, details: { type: "ARRAY", items: { type: "STRING" } } },
-              required: ["title"]
-            }
-          }
-        },
-        required: ["title", "children"]
-      }
-    }
-  },
-  required: ["title", "branches"]
-};
-const MAP_PROMPT = "Eres un profesor que ayuda a una estudiante a estudiar. Convierte estos apuntes en un MAPA MENTAL jerárquico, en el mismo idioma que los apuntes (normalmente español). \"title\" es el tema central en pocas palabras. Crea de 3 a 6 \"branches\" con las ideas principales; cada una con 2 a 5 \"children\" (subideas) y, si ayuda, 1 a 3 \"details\" muy cortos (definiciones, ejemplos, datos). Cada texto debe tener como mucho 8 palabras: son etiquetas, no frases largas. Usa solo información de los apuntes.";
-
-const VIDEO_SCHEMA = {
-  type: "OBJECT",
-  properties: {
-    title: { type: "STRING" },
-    scenes: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: { heading: { type: "STRING" }, points: { type: "ARRAY", items: { type: "STRING" } }, narration: { type: "STRING" } },
-        required: ["heading", "points", "narration"]
-      }
-    }
-  },
-  required: ["title", "scenes"]
-};
-const VIDEO_PROMPT = "Eres un profesor que graba una VIDEO-LECCIÓN corta para que una estudiante repase estos apuntes, en el mismo idioma que los apuntes (normalmente español). Escribe el guion en 5 a 8 escenas. La primera presenta el tema y la última repasa las 3 ideas clave. En cada escena: \"heading\" es un título de pocas palabras, \"points\" son 1 a 3 frases muy cortas que se verán en pantalla (máximo 10 palabras cada una), y \"narration\" es lo que dice el profesor en voz alta: 2 o 3 frases naturales y cercanas, como si se lo explicaras a una amiga, que expliquen los puntos con un ejemplo cuando ayude. No uses símbolos, emojis ni Markdown. Usa solo información de los apuntes.";
-
-// ---------- Estado ----------
-let subjects = [], notes = [], current = "all", openId = null, confirming = false;
-let view = "apunte"; // apunte | resumen | quiz
-let busy = null; // { id, what }
-let lastError = null; // { id, what, msg }
-let sumMode = "corto", quizCount = 5, mapMode = "mapa";
-let speaking = null; // id del apunte que se está leyendo
-const answers = {}; // noteId -> array de respuestas elegidas
-const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const md = (s) => window.marked && window.DOMPurify ? DOMPurify.sanitize(marked.parse(s)) : `<div class="text">${esc(s)}</div>`;
-
-function kindOf(file) {
-  const n = file.name.toLowerCase();
-  if (file.type === "application/pdf" || n.endsWith(".pdf")) return "pdf";
-  if (n.endsWith(".docx")) return "docx";
-  if (file.type.startsWith("image/")) return "img";
-  return "txt";
-}
-const KIND_LABEL = { pdf: "PDF", docx: "WORD", img: "FOTO", txt: "TEXTO" };
-const fmtDate = (t) => new Date(t).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
-const fmtSize = (b) => b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
-
-function toast(msg) {
-  const t = $("toast"); t.textContent = msg; t.hidden = false;
-  clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 2600);
-}
-
-// ---------- Ejemplo inicial ----------
-const EXAMPLE_SUMMARY = "La **célula** es la unidad básica de la vida: todo ser vivo está formado por una o más células.\n\n- Hay dos tipos: **procariotas** (sin núcleo, como las bacterias) y **eucariotas** (con núcleo, como las animales y vegetales).\n- La **mitocondria** produce energía (**ATP**) con la respiración celular.\n- El **cloroplasto** hace la fotosíntesis y solo está en células vegetales.\n- Los **ribosomas** fabrican proteínas.\n- El **núcleo** guarda el ADN y dirige la célula.";
-const EXAMPLE_QUIZ = [
-  { question: "¿Qué diferencia a una célula procariota de una eucariota?", options: ["La procariota no tiene núcleo definido", "La procariota tiene cloroplastos", "La eucariota no tiene ADN", "La eucariota es siempre una bacteria"], answer: 0, explanation: "Según los apuntes, las procariotas no tienen núcleo definido y las eucariotas tienen un núcleo rodeado de membrana." },
-  { question: "¿Qué orgánulo produce la energía (ATP) de la célula?", options: ["Ribosoma", "Núcleo", "Mitocondria", "Cloroplasto"], answer: 2, explanation: "La mitocondria produce ATP mediante la respiración celular." },
-  { question: "¿Dónde se encuentran los cloroplastos?", options: ["En todas las células", "Solo en células vegetales", "Solo en bacterias", "Solo en células animales"], answer: 1, explanation: "Los apuntes indican que el cloroplasto realiza la fotosíntesis solo en células vegetales." }
-];
-const EXAMPLE_MAP = {
-  title: "La célula",
-  branches: [
-    { title: "Qué es", children: [{ title: "Unidad básica de la vida" }, { title: "Todo ser vivo tiene células", details: ["Una o más células"] }] },
-    { title: "Tipos", children: [{ title: "Procariota", details: ["Sin núcleo definido", "Ej.: bacterias"] }, { title: "Eucariota", details: ["Núcleo con membrana", "Ej.: animales y vegetales"] }] },
-    { title: "Orgánulos", children: [{ title: "Mitocondria", details: ["Produce ATP"] }, { title: "Cloroplasto", details: ["Fotosíntesis", "Solo vegetales"] }, { title: "Ribosoma", details: ["Fabrica proteínas"] }, { title: "Núcleo", details: ["Guarda el ADN"] }] }
-  ]
-};
-const EXAMPLE_VIDEO = {
-  title: "La célula en dos minutos",
-  scenes: [
-    { heading: "La célula", points: ["La unidad básica de la vida"], narration: "Hoy repasamos la célula. Es la pieza más pequeña de la que está hecho cualquier ser vivo, desde una bacteria hasta tú." },
-    { heading: "Dos tipos de célula", points: ["Procariota: sin núcleo", "Eucariota: con núcleo"], narration: "Hay dos grandes tipos. Las procariotas no tienen núcleo definido, como las bacterias. Las eucariotas sí lo tienen, como las de animales y plantas." },
-    { heading: "La central de energía", points: ["Mitocondria", "Produce ATP"], narration: "La mitocondria es como la central eléctrica de la célula. Fabrica ATP, que es la energía que la célula usa para todo." },
-    { heading: "Solo en las plantas", points: ["Cloroplasto", "Hace la fotosíntesis"], narration: "El cloroplasto solo aparece en células vegetales. Es donde se hace la fotosíntesis." },
-    { heading: "Fábrica y cerebro", points: ["Ribosoma: fabrica proteínas", "Núcleo: guarda el ADN"], narration: "Los ribosomas fabrican proteínas. Y el núcleo guarda el ADN y dirige todo lo que hace la célula." },
-    { heading: "Lo que no puedes olvidar", points: ["Procariota sin núcleo, eucariota con núcleo", "Mitocondria igual a energía", "Cloroplasto solo en vegetales"], narration: "Para el examen: procariota sin núcleo y eucariota con núcleo, la mitocondria da energía, y el cloroplasto solo está en las plantas." }
-  ]
-};
-async function seed() {
-  const s = { id: "ejemplo", name: "Biología", created: Date.now() };
-  await put("subjects", s);
-  const text = "Tema 3. La célula\n\nLa célula es la unidad básica de la vida. Todos los seres vivos están formados por una o más células.\n\nTipos de célula:\n• Procariota: sin núcleo definido. Ejemplo: bacterias.\n• Eucariota: con núcleo rodeado de membrana. Ejemplo: células animales y vegetales.\n\nOrgánulos importantes:\n• Mitocondria: produce energía (ATP) mediante la respiración celular.\n• Cloroplasto: realiza la fotosíntesis (solo en células vegetales).\n• Ribosoma: fabrica proteínas.\n• Núcleo: guarda el ADN y controla la actividad de la célula.";
-  await put("notes", { id: "ejemplo-nota", subject: "ejemplo", name: "Tema 3 - La célula.txt", kind: "txt", size: text.length, added: Date.now(), blob: new Blob([text], { type: "text/plain" }), example: true });
-}
-async function upgradeExample() {
-  const n = notes.find(x => x.id === "ejemplo-nota");
-  if (!n) return;
-  let changed = false;
-  if (!n.summary && !n.quiz) {
-    n.summary = { mode: "corto", text: EXAMPLE_SUMMARY, at: Date.now() };
-    n.quiz = { questions: EXAMPLE_QUIZ, at: Date.now() };
-    changed = true;
-  }
-  if (!n.map) { n.map = { tree: EXAMPLE_MAP, at: Date.now() }; changed = true; }
-  if (!n.video) { n.video = { script: EXAMPLE_VIDEO, at: Date.now() }; changed = true; }
-  if (changed) await put("notes", n);
-}
-
-// ---------- Render ----------
-function renderKey() {
-  const has = !!ls.get("gemini-key");
-  $("keydot").classList.toggle("on", has);
-  $("keystatus").textContent = has ? "Conectado: hay una clave guardada en este navegador." : "Todavía no hay ninguna clave guardada.";
-}
-function renderTabs() {
-  const counts = {}; notes.forEach(n => counts[n.subject] = (counts[n.subject] || 0) + 1);
-  const tab = (id, label, n) => `<button class="tab" data-s="${id}" aria-pressed="${current === id}">${esc(label)}<span class="n">${n}</span></button>`;
-  $("tabs").innerHTML = tab("all", "Todas", notes.length) +
-    subjects.map(s => tab(s.id, s.name, counts[s.id] || 0)).join("") +
-    `<button class="tab ghost" id="addsubj">+ Asignatura</button>`;
-  $("target").innerHTML = subjects.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("") || `<option value="">Sin asignatura</option>`;
-  if (current !== "all") $("target").value = current;
-  renderSubjTools();
-}
-let subjMode = null; // null | "rename" | "delete"
-function renderSubjTools() {
-  const box = $("subjtools");
-  const s = subjects.find(x => x.id === current);
-  if (!s) { box.innerHTML = ""; subjMode = null; return; }
-  const count = notes.filter(n => n.subject === s.id).length;
-  if (subjMode === "rename") {
-    box.innerHTML = `<form class="newsubj" id="renameform">
-      <input type="text" id="renameinput" value="${esc(s.name)}" maxlength="40" aria-label="Nuevo nombre de la asignatura">
-      <button class="primary" type="submit">Guardar nombre</button><button class="ghost" type="button" id="subjcancel">Cancelar</button></form>`;
-    $("renameinput").focus();
-  } else if (subjMode === "delete") {
-    box.innerHTML = `<div class="confirm"><span>¿Borrar «${esc(s.name)}»${count ? (count > 1 ? ` y sus ${count} apuntes` : " y su apunte") : ""}? No se puede deshacer.</span>
-      <button class="danger" id="subjyes">Sí, borrar</button><button class="ghost" id="subjcancel">Cancelar</button></div>`;
-  } else {
-    box.innerHTML = `<div class="actions"><button class="ghost" id="subjrename">Renombrar «${esc(s.name)}»</button><button class="danger" id="subjdel">Borrar asignatura</button></div>`;
-  }
-}
-function renderList() {
-  const list = notes.filter(n => current === "all" || n.subject === current).sort((a, b) => b.added - a.added);
-  const sname = (id) => (subjects.find(s => s.id === id) || {}).name || "Sin asignatura";
-  $("listtitle").textContent = current === "all" ? "Todos los apuntes" : sname(current);
-  $("list").innerHTML = list.length ? list.map(n => `
-    <button class="item" data-id="${n.id}" aria-current="${n.id === openId}">
-      <span class="kind">${KIND_LABEL[n.kind]}</span>
-      <div><span class="name">${esc(n.name)}</span>
-      <span class="meta">${esc(sname(n.subject))} · ${fmtDate(n.added)} · ${fmtSize(n.size)}${n.summary ? " · resumen" : ""}${n.quiz ? " · quiz" : ""}${n.example ? '<span class="example">Ejemplo</span>' : ""}</span></div>
-    </button>`).join("") : `<p class="empty">Aún no hay apuntes aquí. Sube el primero con el recuadro de arriba.</p>`;
-}
-function renderViewer() {
-  const v = $("viewer");
-  const n = notes.find(x => x.id === openId);
-  if (!n) { v.innerHTML = `<p class="empty" style="border:0">Elige un apunte de la lista para verlo.</p>`; return; }
-  const tab = (id, label) => `<button class="vtab" role="tab" data-v="${id}" aria-selected="${view === id}">${label}</button>`;
-  v.innerHTML = `
-    <div class="vhead">
-      <div><h2>${esc(n.name)}${n.example ? '<span class="example">Ejemplo</span>' : ""}</h2>
-      <p class="sub">${KIND_LABEL[n.kind]} · subido el ${fmtDate(n.added)}</p></div>
-      <div class="actions"><button class="danger" id="delbtn">Borrar</button></div>
-    </div>
-    <div id="confirm"></div>
-    <div class="vtabs" role="tablist">${tab("apunte", "Apunte")}${tab("resumen", "Resumen")}${tab("quiz", "Quiz")}${tab("mapa", "Mapa")}${tab("video", "Vídeo")}</div>
-    <div class="content" id="content"></div>`;
-  renderConfirm();
-  if (view === "apunte") renderOriginal(n);
-  else if (view === "resumen") renderSummary(n);
-  else if (view === "quiz") renderQuiz(n);
-  else if (view === "mapa") renderMap(n);
-  else renderVideo(n);
-}
-function busyHtml(what) { return `<div class="busy"><span class="spin"></span>${busy?.retry ? "Gemini está saturado; reintentando y probando otro modelo…" : what}</div>`; }
-function errHtml(n, what) { return lastError && lastError.id === n.id && lastError.what === what ? `<p class="err">${esc(lastError.msg)}</p>` : ""; }
-
-function renderSummary(n) {
-  const c = $("content");
-  const isBusy = busy && busy.id === n.id && busy.what === "resumen";
-  const modeBtn = (m, l) => `<button class="tab" data-sm="${m}" aria-pressed="${sumMode === m}">${l}</button>`;
-  c.innerHTML = `<div style="display:grid;gap:14px">
-    <div class="actions">${modeBtn("corto", "Corto")}${modeBtn("detallado", "Detallado")}
-      <button class="primary" id="gosum" ${isBusy || busy ? "disabled" : ""}>${n.summary ? "Hacer otro resumen" : "Hacer resumen"}</button></div>
-    ${errHtml(n, "resumen")}
-    ${isBusy ? busyHtml(busy.partial ? "Gemini está escribiendo…" : "Gemini está leyendo tus apuntes…") : ""}
-    ${isBusy && busy.partial ? `<div class="md" id="partial">${md(busy.partial)}</div>` : n.summary ? `${canSpeak ? `<div class="actions">
-        <button id="speakbtn">${speaking === n.id ? "Parar audio" : "Escuchar resumen"}</button>
-        <label class="note" for="rate">Velocidad</label>
-        <select id="rate">${[0.8, 1, 1.25, 1.5].map(r => `<option value="${r}" ${r === speakRate ? "selected" : ""}>${String(r).replace(".", ",")}x</option>`).join("")}</select>
-      </div>` : ""}
-      <p class="note" style="margin:0">Resumen ${n.summary.mode} · ${fmtDate(n.summary.at)}</p><div class="md">${md(n.summary.text)}</div>`
-      : (isBusy ? "" : `<p class="note">Elige corto o detallado y pulsa «Hacer resumen». El resumen se guarda con el apunte.</p>`)}
-  </div>`;
-}
-function renderQuiz(n) {
-  const c = $("content");
-  const isBusy = busy && busy.id === n.id && busy.what === "quiz";
-  const cntBtn = (k) => `<button class="tab" data-qc="${k}" aria-pressed="${quizCount === k}">${k} preguntas</button>`;
-  const q = n.quiz?.questions || [];
-  const a = answers[n.id] || (answers[n.id] = []);
-  const done = a.filter(x => x !== undefined).length;
-  const right = q.reduce((s, x, i) => s + (a[i] === x.answer ? 1 : 0), 0);
-  c.innerHTML = `<div style="display:grid;gap:14px">
-    <div class="actions">${cntBtn(5)}${cntBtn(10)}${cntBtn(15)}
-      <button class="primary" id="goquiz" ${busy ? "disabled" : ""}>${q.length ? "Hacer otro quiz" : "Hacer quiz"}</button></div>
-    ${errHtml(n, "quiz")}
-    ${isBusy ? busyHtml("Gemini está preparando las preguntas…") : ""}
-    ${q.length ? `
-      <div class="actions"><span class="score">${right} de ${q.length} correctas</span>
-        <span class="note">${done < q.length ? `Te quedan ${q.length - done}` : (right === q.length ? "¡Todo bien!" : "Terminado")}</span>
-        ${done ? `<button class="ghost" id="retry">Repetir</button>` : ""}</div>
-      <ol class="qlist">${q.map((x, i) => {
-        const chosen = a[i];
-        return `<li class="q"><p><span class="num">${i + 1}.</span>${esc(x.question)}</p>
-          ${x.options.map((o, j) => {
-            let cls = "";
-            if (chosen !== undefined) { if (j === x.answer) cls = "right"; else if (j === chosen) cls = "wrong"; }
-            return `<button class="opt ${cls}" data-q="${i}" data-o="${j}" ${chosen !== undefined ? "disabled" : ""}>${esc(o)}</button>`;
-          }).join("")}
-          ${chosen !== undefined ? `<div class="expl">${chosen === x.answer ? "Correcto. " : "No era esa. "}${esc(x.explanation)}</div>` : ""}
-        </li>`;
-      }).join("")}</ol>`
-      : (isBusy ? "" : `<p class="note">Elige cuántas preguntas quieres y pulsa «Hacer quiz». Al responder verás al momento si aciertas y por qué.</p>`)}
-  </div>`;
-}
-function renderMap(n) {
-  const c = $("content");
-  const isBusy = busy && busy.id === n.id && busy.what === "mapa";
-  const modeBtn = (m, l) => `<button class="tab" data-mm="${m}" aria-pressed="${mapMode === m}">${l}</button>`;
-  const tree = n.map?.tree;
-  c.innerHTML = `<div style="display:grid;gap:14px">
-    <div class="actions">${modeBtn("mapa", "Mapa mental")}${modeBtn("esquema", "Esquema")}
-      <button class="primary" id="gomap" ${busy ? "disabled" : ""}>${tree ? "Hacer otro mapa" : "Hacer mapa"}</button></div>
-    ${errHtml(n, "mapa")}
-    ${isBusy ? busyHtml("Gemini está ordenando las ideas…") : ""}
-    ${tree ? (mapMode === "mapa" ? `<p class="note" style="margin:0">Desliza hacia los lados para ver el mapa entero.</p><div class="mapwrap">${mapSvg(tree)}</div>` : outlineHtml(tree))
-      : (isBusy ? "" : `<p class="note">Pulsa «Hacer mapa» y Gemini ordenará el apunte en un mapa mental. Con el botón «Esquema» verás lo mismo como lista.</p>`)}
-  </div>`;
-}
-function wrapText(s, max) {
-  const words = String(s).split(/\s+/), lines = [];
-  let cur = "";
-  for (const w of words) {
-    if ((cur + " " + w).trim().length > max && cur) { lines.push(cur); cur = w; }
-    else cur = (cur + " " + w).trim();
-  }
-  if (cur) lines.push(cur);
-  return lines.slice(0, 4);
-}
-function mapSvg(tree) {
-  const W = 150, COL = 172, LH = 17, PAD = 8, GAP = 10;
-  const root = { label: tree.title || "Tema", depth: 0, kids: [] };
-  (tree.branches || []).forEach((b, bi) => {
-    const bn = { label: b.title, depth: 1, branch: bi % 6, kids: [] };
-    (b.children || []).forEach(ch => {
-      const cn = { label: ch.title, depth: 2, branch: bi % 6, kids: [] };
-      (ch.details || []).forEach(d => cn.kids.push({ label: d, depth: 3, branch: bi % 6, kids: [] }));
-      bn.kids.push(cn);
-    });
-    root.kids.push(bn);
-  });
-  let cursor = GAP, maxDepth = 0;
-  const nodes = [];
-  (function lay(nd) {
-    nd.lines = wrapText(nd.label, nd.depth === 0 ? 16 : 19);
-    nd.h = nd.lines.length * LH + PAD * 2;
-    nd.x = 10 + nd.depth * COL;
-    maxDepth = Math.max(maxDepth, nd.depth);
-    nodes.push(nd);
-    if (!nd.kids.length) { nd.y = cursor + nd.h / 2; cursor += nd.h + GAP; }
-    else { nd.kids.forEach(lay); nd.y = (nd.kids[0].y + nd.kids[nd.kids.length - 1].y) / 2; }
-  })(root);
-  const width = 10 + maxDepth * COL + W + 10, height = Math.max(cursor, root.h + GAP * 2);
-  const links = [], boxes = [];
-  for (const nd of nodes) {
-    for (const k of nd.kids) {
-      const x1 = nd.x + W, x2 = k.x, mx = (x1 + x2) / 2;
-      links.push(`<path class="link" d="M${x1},${nd.y} C${mx},${nd.y} ${mx},${k.y} ${x2},${k.y}"/>`);
-    }
-    const cls = nd.depth === 0 ? "root" : `b${nd.branch} d${nd.depth}`;
-    const top = nd.y - nd.h / 2;
-    const tspans = nd.lines.map((l, i) => `<tspan x="${nd.x + 10}" y="${top + PAD + LH * (i + 1) - 4}">${esc(l)}</tspan>`).join("");
-    boxes.push(`<g class="${cls}"><rect x="${nd.x}" y="${top}" width="${W}" height="${nd.h}" rx="8"/><text>${tspans}</text></g>`);
-  }
-  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Mapa mental de ${esc(root.label)}">${links.join("")}${boxes.join("")}</svg>`;
-}
-function outlineHtml(tree) {
-  return `<div class="outline"><h2>${esc(tree.title || "Tema")}</h2>${(tree.branches || []).map((b, bi) => `
-    <section class="b${bi % 6}"><h3><span class="lvl">${bi + 1}.</span>${esc(b.title)}</h3>
-      <ul>${(b.children || []).map((ch, ci) => `<li><strong><span class="lvl">${bi + 1}.${ci + 1}</span>${esc(ch.title)}</strong>
-        ${(ch.details || []).length ? `<ul>${ch.details.map(d => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}</li>`).join("")}</ul>
-    </section>`).join("")}</div>`;
-}
-
-// ---------- Vídeo-lección (escenas animadas + voz del dispositivo) ----------
-const vp = { id: null, i: 0, playing: false, timers: [] };
-function vClear() { vp.timers.forEach(clearTimeout); vp.timers = []; if (canSpeak) speechSynthesis.cancel(); }
-function vStop() { vClear(); vp.playing = false; }
-function renderVideo(n) {
-  const c = $("content");
-  const isBusy = busy && busy.id === n.id && busy.what === "video";
-  const sc = n.video?.script;
-  if (vp.id !== n.id) { vStop(); vp.id = n.id; vp.i = 0; vp.ended = false; }
-  c.innerHTML = `<div style="display:grid;gap:14px">
-    <div class="actions"><button class="primary" id="govideo" ${busy ? "disabled" : ""}>${sc ? "Hacer otro vídeo" : "Hacer vídeo"}</button>
-      ${sc ? `<span class="note">${esc(sc.title || "")} · ${sc.scenes.length} escenas</span>` : ""}</div>
-    ${errHtml(n, "video")}
-    ${isBusy ? busyHtml("Gemini está escribiendo el guion del vídeo…") : ""}
-    ${sc ? `<div class="player">
-        <div class="bars" id="vbars"></div>
-        <div class="stage" id="vstage"></div>
-        <div class="actions"><button id="vprev">Anterior</button><button class="primary" id="vplay">Reproducir</button><button id="vnext">Siguiente</button>
-          ${canSpeak ? "" : `<span class="note">Este navegador no tiene voz: el vídeo avanza solo con subtítulos.</span>`}</div>
-        <div class="subs" id="vsubs" aria-live="polite"></div>
-      </div>`
-      : (isBusy ? "" : `<p class="note">Pulsa «Hacer vídeo» y Gemini preparará una vídeo-lección corta con este apunte: escenas animadas y una voz que te lo explica.</p>`)}
-  </div>`;
-  if (sc) vDraw(n, false);
-}
-function vDraw(n, animate) {
-  const sc = n.video.script, s = sc.scenes[vp.i];
-  if (!$("vstage")) return;
-  $("vbars").innerHTML = sc.scenes.map((_, k) => `<span class="${k <= vp.i ? "done" : ""}"></span>`).join("");
-  $("vstage").innerHTML = `<span class="scn">${vp.i + 1} / ${sc.scenes.length}</span>
-    <h3 class="fade"><span>${esc(s.heading)}</span></h3>
-    <ul>${(s.points || []).map(p => `<li class="${animate ? "" : "on"}">${esc(p)}</li>`).join("")}</ul>`;
-  $("vsubs").textContent = s.narration;
-  $("vplay").textContent = vp.playing ? "Pausa" : (vp.ended ? "Ver otra vez" : "Reproducir");
-}
-function vPlayScene(n) {
-  vClear();
-  const sc = n.video.script, s = sc.scenes[vp.i];
-  vDraw(n, true);
-  const lis = [...document.querySelectorAll("#vstage li")];
-  lis.forEach((li, k) => vp.timers.push(setTimeout(() => li.classList.add("on"), 400 + k * 1600)));
-  const words = s.narration.split(/\s+/).length;
-  const est = Math.max(4000, words * 420 / speakRate);
-  let advanced = false;
-  const next = () => {
-    if (advanced || !vp.playing || vp.id !== n.id) return; advanced = true;
-    if (vp.i < sc.scenes.length - 1) { vp.timers.push(setTimeout(() => { vp.i++; vPlayScene(n); }, 700)); }
-    else { vp.playing = false; vp.ended = true; vDraw(n, false); }
-  };
-  if (canSpeak) {
-    const voices = speechSynthesis.getVoices();
-    const voice = voices.find(v => /^es[-_]ES/i.test(v.lang)) || voices.find(v => /^es/i.test(v.lang));
-    const u = new SpeechSynthesisUtterance(s.narration);
-    u.lang = voice ? voice.lang : "es-ES"; if (voice) u.voice = voice; u.rate = speakRate;
-    u.onend = next;
-    speechSynthesis.speak(u);
-    vp.timers.push(setTimeout(next, est * 2.2)); // por si el navegador no avisa al terminar
-  } else {
-    vp.timers.push(setTimeout(next, est));
-  }
-}
-
-// ---------- Audio (voz del propio dispositivo) ----------
-const canSpeak = "speechSynthesis" in window;
-let speakRate = 1;
-function plainText(mdText) {
-  return mdText.replace(/[#*_`>|]/g, "").replace(/^\s*[-•]\s+/gm, "").replace(/\[(.*?)\]\(.*?\)/g, "$1");
-}
-function speak(n) {
-  if (!canSpeak) return;
-  speechSynthesis.cancel();
-  const parts = plainText(n.summary.text).split(/(?<=[.!?:])\s+|\n+/).map(s => s.trim()).filter(Boolean);
-  const voices = speechSynthesis.getVoices();
-  const voice = voices.find(v => /^es[-_]ES/i.test(v.lang)) || voices.find(v => /^es/i.test(v.lang));
-  speaking = n.id;
-  parts.forEach((p, i) => {
-    const u = new SpeechSynthesisUtterance(p);
-    u.lang = voice ? voice.lang : "es-ES"; if (voice) u.voice = voice; u.rate = speakRate;
-    if (i === parts.length - 1) u.onend = () => { if (speaking === n.id) { speaking = null; if (view === "resumen") renderViewer(); } };
-    speechSynthesis.speak(u);
-  });
-}
-function stopSpeak() { if (canSpeak) speechSynthesis.cancel(); speaking = null; }
-if (canSpeak) { try { speechSynthesis.getVoices(); } catch (e) {} }
-
-async function renderOriginal(n) {
-  const c = $("content");
-  c.innerHTML = `<p class="sub">Cargando…</p>`;
-  try {
-    if (n.kind === "img") {
-      const img = new Image(); img.alt = n.name; img.src = URL.createObjectURL(n.blob); c.replaceChildren(img);
-    } else if (n.kind === "txt" || n.kind === "docx") {
-      const t = (await noteText(n)).trim();
-      c.innerHTML = `<div class="text">${esc(t || "Este documento no tiene texto.")}</div>`;
-    } else if (n.kind === "pdf") {
-      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await n.blob.arrayBuffer()) }).promise;
-      c.innerHTML = `<p class="sub">${pdf.numPages} página${pdf.numPages > 1 ? "s" : ""}</p>`;
-      const max = Math.min(pdf.numPages, 15);
-      for (let i = 1; i <= max; i++) {
-        if (openId !== n.id || view !== "apunte") return;
-        const page = await pdf.getPage(i);
-        const vp = page.getViewport({ scale: 1.4 });
-        const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
-        await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
-        c.appendChild(cv);
-      }
-      if (pdf.numPages > max) c.insertAdjacentHTML("beforeend", `<p class="sub">Se muestran las primeras ${max} páginas.</p>`);
-    }
-  } catch (e) {
-    c.innerHTML = `<p class="sub">No se pudo mostrar este archivo. Sigue guardado y puedes hacer el resumen o el quiz igualmente.</p>`;
-  }
-}
-function renderConfirm() {
-  const box = $("confirm"); if (!box) return;
-  box.innerHTML = confirming ? `<div class="confirm"><span>¿Borrar este apunte con su resumen y su quiz? No se puede deshacer.</span>
-    <button class="danger" id="yesdel">Sí, borrar</button><button class="ghost" id="nodel">Cancelar</button></div>` : "";
-}
-function render() { renderKey(); renderTabs(); renderList(); renderViewer(); }
-function refreshIfOpen(id) { if (openId === id) renderViewer(); renderList(); }
-
-// ---------- Acciones ----------
-async function addFiles(files) {
-  if (!files.length) return;
-  let subject = $("target").value;
-  if (!subject) { const s = { id: uid(), name: "General", created: Date.now() }; await put("subjects", s); subjects.push(s); subject = s.id; }
-  let last = null, ok = 0;
-  for (const f of files) {
-    const n = { id: uid(), subject, name: f.name, kind: kindOf(f), size: f.size, added: Date.now(), blob: f };
-    try { await put("notes", n); notes.push(n); last = n.id; ok++; } catch (e) { toast("No se pudo guardar " + f.name + ". Puede que el navegador no tenga espacio."); }
-  }
-  if (ok) { openId = last; confirming = false; view = "apunte"; current = subject; render(); toast(ok === 1 ? "Apunte guardado" : ok + " apuntes guardados"); }
-}
-async function runAI(n, what) {
-  if (!ls.get("gemini-key")) { $("keypanel").hidden = false; $("keyinput").focus(); toast("Primero conecta con Gemini"); return; }
-  busy = { id: n.id, what }; lastError = null; refreshIfOpen(n.id);
-  try {
-    if (what === "resumen") {
-      const text = await generate(n, SUMMARY_PROMPTS[sumMode], null, (partial) => {
-        busy.partial = partial;
-        const el = $("partial");
-        if (el && openId === n.id) el.innerHTML = md(partial); else if (openId === n.id && view === "resumen") renderViewer();
-      });
-      n.summary = { mode: sumMode, text, at: Date.now() };
-    } else if (what === "video") {
-      const raw = await generate(n, VIDEO_PROMPT, VIDEO_SCHEMA);
-      let script; try { script = JSON.parse(raw); } catch (e) { throw new AIError("Gemini devolvió el vídeo con un formato raro. Vuelve a intentarlo."); }
-      script.scenes = (script.scenes || []).filter(s => s.heading && s.narration);
-      if (!script.scenes.length) throw new AIError("Gemini no ha podido preparar un vídeo de este apunte. Vuelve a intentarlo.");
-      n.video = { script, at: Date.now() };
-      vStop(); vp.i = 0; vp.ended = false;
-    } else if (what === "mapa") {
-      const raw = await generate(n, MAP_PROMPT, MAP_SCHEMA);
-      let tree; try { tree = JSON.parse(raw); } catch (e) { throw new AIError("Gemini devolvió el mapa con un formato raro. Vuelve a intentarlo."); }
-      if (!tree || !Array.isArray(tree.branches) || !tree.branches.length) throw new AIError("Gemini no ha podido sacar un mapa de este apunte. Vuelve a intentarlo.");
-      n.map = { tree, at: Date.now() };
-    } else {
-      const raw = await generate(n, quizPrompt(quizCount), QUIZ_SCHEMA);
-      let data; try { data = JSON.parse(raw); } catch (e) { throw new AIError("Gemini devolvió el quiz con un formato raro. Vuelve a intentarlo."); }
-      const qs = (data.questions || []).filter(q => q.question && Array.isArray(q.options) && q.options.length >= 2 && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length);
-      if (!qs.length) throw new AIError("Gemini no ha podido sacar preguntas de este apunte. Prueba con otro o vuelve a intentarlo.");
-      n.quiz = { questions: qs, at: Date.now() };
-      answers[n.id] = [];
-    }
-    await put("notes", n);
-    toast({ resumen: "Resumen listo", quiz: "Quiz listo", mapa: "Mapa listo", video: "Vídeo listo" }[what]);
-  } catch (e) {
-    lastError = { id: n.id, what, msg: e instanceof AIError ? e.message : "Algo ha fallado: " + (e.message || e) };
-  } finally {
-    busy = null; refreshIfOpen(n.id);
-  }
-}
-
-document.addEventListener("click", async (e) => {
-  const t = e.target.closest("button"); if (!t) return;
-  const n = notes.find(x => x.id === openId);
-  if (t.dataset.s) { current = t.dataset.s; subjMode = null; renderTabs(); renderList(); return; }
-  if (t.dataset.v) { stopSpeak(); vStop(); view = t.dataset.v; renderViewer(); return; }
-  if (t.id === "govideo" && n) { vStop(); runAI(n, "video"); return; }
-  if (t.id === "vplay" && n?.video) {
-    if (vp.playing) { vStop(); vDraw(n, false); }
-    else { stopSpeak(); if (vp.ended) vp.i = 0; vp.playing = true; vp.ended = false; vPlayScene(n); }
-    return;
-  }
-  if ((t.id === "vnext" || t.id === "vprev") && n?.video) {
-    const max = n.video.script.scenes.length - 1;
-    vp.i = Math.min(max, Math.max(0, vp.i + (t.id === "vnext" ? 1 : -1))); vp.ended = false;
-    if (vp.playing) vPlayScene(n); else { vClear(); vDraw(n, false); }
-    return;
-  }
-  if (t.dataset.mm) { mapMode = t.dataset.mm; renderViewer(); return; }
-  if (t.id === "gomap" && n) { runAI(n, "mapa"); return; }
-  if (t.id === "speakbtn" && n) { if (speaking === n.id) stopSpeak(); else speak(n); renderViewer(); return; }
-  if (t.dataset.sm) { sumMode = t.dataset.sm; renderViewer(); return; }
-  if (t.dataset.qc) { quizCount = +t.dataset.qc; renderViewer(); return; }
-  if (t.dataset.q !== undefined && n) { (answers[n.id] ||= [])[+t.dataset.q] = +t.dataset.o; renderViewer(); return; }
-  if (t.id === "retry" && n) { answers[n.id] = []; renderViewer(); return; }
-  if (t.id === "gosum" && n) { runAI(n, "resumen"); return; }
-  if (t.id === "goquiz" && n) { runAI(n, "quiz"); return; }
-  if (t.id === "keybtn") { $("keypanel").hidden = !$("keypanel").hidden; return; }
-  if (t.id === "keyforget") { ls.del("gemini-key"); ls.del("gemini-models"); renderKey(); toast("Clave quitada"); return; }
-  if (t.id === "addsubj") { $("newsubj").hidden = false; $("subjname").focus(); return; }
-  if (t.id === "cancelsubj") { $("newsubj").hidden = true; return; }
-  if (t.id === "subjrename") { subjMode = "rename"; renderSubjTools(); return; }
-  if (t.id === "subjdel") { subjMode = "delete"; renderSubjTools(); return; }
-  if (t.id === "subjcancel") { subjMode = null; renderSubjTools(); return; }
-  if (t.id === "subjyes") {
-    const id = current;
-    for (const x of notes.filter(n => n.subject === id)) await del("notes", x.id);
-    await del("subjects", id);
-    notes = notes.filter(n => n.subject !== id); subjects = subjects.filter(s => s.id !== id);
-    if (!notes.find(n => n.id === openId)) { openId = null; stopSpeak(); vStop(); }
-    current = "all"; subjMode = null; render(); toast("Asignatura borrada");
-    return;
-  }
-  if (t.dataset.id) { stopSpeak(); vStop(); openId = t.dataset.id; confirming = false; view = "apunte"; renderList(); renderViewer(); return; }
-  if (t.id === "delbtn") { confirming = true; renderConfirm(); return; }
-  if (t.id === "nodel") { confirming = false; renderConfirm(); return; }
-  if (t.id === "yesdel") {
-    await del("notes", openId); notes = notes.filter(x => x.id !== openId); openId = null; confirming = false; render(); toast("Apunte borrado");
-  }
-});
-document.addEventListener("change", (e) => {
-  if (e.target.id === "rate") {
-    speakRate = +e.target.value;
-    const n = notes.find(x => x.id === openId);
-    if (n && speaking === n.id) speak(n);
-  }
-});
-$("keyform").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const k = $("keyinput").value.trim(); if (!k) return;
-  ls.set("gemini-key", k); ls.del("gemini-models"); $("keyinput").value = "";
-  renderKey(); $("keypanel").hidden = true; toast("Clave guardada");
-});
-document.addEventListener("submit", async (e) => {
-  if (e.target.id !== "renameform") return;
-  e.preventDefault();
-  const name = $("renameinput").value.trim(); const s = subjects.find(x => x.id === current);
-  if (!name || !s) return;
-  s.name = name; await put("subjects", s); subjMode = null; render(); toast("Nombre cambiado");
-});
-$("newsubj").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const name = $("subjname").value.trim(); if (!name) return;
-  const s = { id: uid(), name, created: Date.now() };
-  await put("subjects", s); subjects.push(s); current = s.id;
-  $("subjname").value = ""; $("newsubj").hidden = true; render(); toast("Asignatura creada");
-});
-$("file").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; });
-const drop = $("drop");
-["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
-["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, () => drop.classList.remove("over")));
-drop.addEventListener("drop", (e) => { e.preventDefault(); addFiles([...e.dataTransfer.files]); });
-
-(async () => {
-  await openDB();
-  subjects = await all("subjects");
-  // El ejemplo solo se crea la primera vez; si luego se borra, no vuelve.
-  if (!subjects.length && !ls.get("ejemplo-creado")) { await seed(); subjects = await all("subjects"); }
-  ls.set("ejemplo-creado", "1");
-  notes = await all("notes");
-  await upgradeExample();
-  subjects.sort((a, b) => a.created - b.created);
-  openId = (notes.find(n => n.example) || notes[0] || {}).id || null;
-  if (notes.find(n => n.id === openId)?.summary) view = "resumen";
-  render();
-})();
-</script>
-
+<div class="toast" id="toast" role="status" hidden></div>
 </body>
 </html>

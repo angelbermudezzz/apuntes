@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2026-10-20d";
+const APP_VERSION = "2026-10-20e";
 
 // ---------- Almacenamiento (IndexedDB, con memoria como respaldo) ----------
 const mem = { subjects: [], notes: [] };
@@ -1682,7 +1682,7 @@ function renderSyncStatus() {
     box.innerHTML = `<p class="note">Para tener los mismos apuntes en el móvil y en el ordenador. Es gratis y solo hay que prepararlo una vez:</p>
       <ol class="note">
         <li>Crea una cuenta en <a href="https://supabase.com/dashboard" target="_blank" rel="noopener">supabase.com</a> y pulsa «New project» (plan Free).</li>
-        <li>Entra en «SQL Editor», pega <a href="supabase.sql" target="_blank" rel="noopener">este código</a> y pulsa «Run».</li>
+        <li>Pulsa <button class="small" type="button" id="copysql">Copiar código</button>, entra en «SQL Editor», pégalo y pulsa «Run».</li>
         <li>En «Project Settings → API» copia la «Project URL» y la clave «anon public» (o «publishable») y pégalas aquí.</li>
       </ol>
       <form class="stack" id="syncform">
@@ -1774,6 +1774,11 @@ document.addEventListener("click", async (e) => {
     if (k === "preguntas-defecto") quizCount = +v;
     applyPrefs(); renderPrefs(); renderTop(); renderSubjTools();
     if (mode === "note" && (view === "tarjetas" || view === "quiz" || view === "resumen")) renderViewer();
+    return;
+  }
+  if (t.id === "copysql") {
+    try { const sql = await (await fetch("supabase.sql", { cache: "no-store" })).text(); await navigator.clipboard.writeText(sql); toast("Código copiado. Pégalo en el SQL Editor."); }
+    catch (err) { toast("No se pudo copiar. Ábrelo aquí: " + location.origin + location.pathname + "supabase.sql"); }
     return;
   }
   if (t.id === "syncnow") { syncNow(true); return; }

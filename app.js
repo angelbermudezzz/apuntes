@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2026-10-20";
+const APP_VERSION = "2026-10-20b";
 
 // ---------- Almacenamiento (IndexedDB, con memoria como respaldo) ----------
 const mem = { subjects: [], notes: [] };
@@ -439,7 +439,8 @@ function renderTop() {
   $("keylink").disabled = !has; $("keyforget").disabled = !has;
   $("keysteps").hidden = has;
   $("welcome").hidden = !!ls.get("bienvenida-vista");
-  $("welcomekey").textContent = has ? "Ya está todo conectado. ¡A estudiar!" : "Antes de nada, abre «Ajustes» y conecta Gemini (o abre el enlace que te hayan mandado para conectarlo solo).";
+  $("welcomekey").textContent = has ? "Ya está todo conectado. ¡A estudiar!" : "Falta conectar Gemini. Copia el enlace que te han mandado por WhatsApp y pulsa «Pegar enlace».";
+  $("pastekey").hidden = has; $("pastekey2").hidden = has;
   const last = +ls.get("ultima-copia") || 0;
   $("backupstatus").textContent = last ? `Última copia: ${new Date(last).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}.` : "Todavía no has guardado ninguna copia.";
   const own = notes.filter(n => !n.example).length;
@@ -453,7 +454,8 @@ const installed = () => navigator.standalone || window.matchMedia("(display-mode
 function renderNotice() {
   const box = $("notice");
   let msg = "";
-  if (!db) msg = "Este navegador no deja guardar datos (¿modo incógnito?). Lo que subas se perderá al cerrar. Ábrela en una ventana normal.";
+  if (/WhatsApp|Instagram|FBAN|FBAV|FB_IAB|Line\/|; wv\)/.test(navigator.userAgent)) msg = "Estás dentro del navegador de WhatsApp (o de otra app) y aquí no se guarda nada. Toca el menú ⋮ o el botón de compartir y elige «Abrir en Chrome» o «Abrir en Safari».";
+  else if (!db) msg = "Este navegador no deja guardar datos (¿modo incógnito?). Lo que subas se perderá al cerrar. Ábrela en una ventana normal.";
   else if (isIOS && !installed() && !ls.get("aviso-ios-luego")) msg = "Consejo para iPhone: añádela a la pantalla de inicio (botón Compartir → «Añadir a pantalla de inicio») y úsala siempre desde ese icono. Si la usas en Safari sin abrirla durante una semana, el iPhone puede borrar los apuntes.";
   box.hidden = !msg;
   box.innerHTML = msg ? `<span>${msg}</span>${db ? `<span class="actions"><button class="small ghost" id="noticeok">Entendido</button></span>` : ""}` : "";
@@ -1128,12 +1130,23 @@ async function applyRestore() {
 }
 
 // ---------- Enlace con la clave ----------
+function keyFromText(t) {
+  const m = String(t || "").match(/AIza[\w-]{20,}/); // vale la clave sola o cualquier enlace que la lleve
+  return m ? m[0] : null;
+}
+function saveKey(k) { ls.set("gemini-key", k); ls.del("gemini-models"); }
 function readKeyFromLink() {
-  const m = location.hash.match(/(?:^#|&)clave=([^&]+)/);
-  if (!m) return;
-  const k = decodeURIComponent(m[1]).trim();
-  history.replaceState(null, "", location.pathname + location.search);
-  if (/^AIza[\w-]{20,}$/.test(k)) { ls.set("gemini-key", k); ls.del("gemini-models"); setTimeout(() => toast("Gemini conectado. ¡Listo para estudiar!"), 600); }
+  if (!/clave=/.test(location.hash + location.search)) return;
+  const k = keyFromText(decodeURIComponent(location.hash + location.search));
+  history.replaceState(null, "", location.pathname);
+  if (k) { saveKey(k); setTimeout(() => toast("Gemini conectado. ¡Listo para estudiar!"), 600); }
+}
+async function pasteKey() {
+  let text = "";
+  try { text = await navigator.clipboard.readText(); } catch (e) {}
+  const k = keyFromText(text);
+  if (k) { saveKey(k); renderTop(); toast("Gemini conectado. ¡Listo para estudiar!"); }
+  else { openSettings(); $("keyinput").focus(); toast("No he encontrado el enlace copiado. Pégalo aquí a mano."); }
 }
 async function copyKeyLink() {
   const link = location.origin + location.pathname + "#clave=" + encodeURIComponent(ls.get("gemini-key") || "");
@@ -1156,6 +1169,7 @@ document.addEventListener("click", async (e) => {
   if (t.id === "welcomeok") { ls.set("bienvenida-vista", "1"); renderTop(); if (!ls.get("gemini-key")) openSettings(); return; }
   if (t.id === "keyforget") { ls.del("gemini-key"); ls.del("gemini-models"); renderTop(); toast("Clave quitada"); return; }
   if (t.id === "keylink") { copyKeyLink(); return; }
+  if (t.id === "pastekey" || t.id === "pastekey2") { pasteKey(); return; }
   if (t.id === "backupbtn" || t.id === "bannerbackup") { if (t.id === "bannerbackup") openSettings(); doBackup(); return; }
   if (t.id === "noticeok") { ls.set("aviso-ios-luego", "1"); renderNotice(); return; }
   if (t.id === "bannerlater") { ls.set("aviso-copia-luego", String(Date.now() + 5 * DAY)); renderTop(); return; }
@@ -1251,9 +1265,9 @@ document.addEventListener("submit", async (e) => {
   if (["renameform", "editform", "askform", "keyform", "newsubj"].includes(id)) e.preventDefault(); else return;
   const n = notes.find(x => x.id === openId);
   if (id === "keyform") {
-    let k = $("keyinput").value.trim(); if (!k) return;
-    const fromLink = k.match(/clave=([^&\s]+)/); if (fromLink) k = decodeURIComponent(fromLink[1]); // también vale pegar el enlace entero
-    ls.set("gemini-key", k); ls.del("gemini-models"); $("keyinput").value = "";
+    const raw = $("keyinput").value.trim(); if (!raw) return;
+    const k = keyFromText(decodeURIComponent(raw)) || raw; // también vale pegar el enlace entero
+    saveKey(k); $("keyinput").value = "";
     renderTop(); toast("Clave guardada. ¡Ya puedes crear resúmenes y tests!");
   } else if (id === "newsubj") {
     const name = $("subjname").value.trim(); if (!name) return;

@@ -1,6 +1,6 @@
 // Guarda la app en el móvil para que abra rápido y también sin internet.
 // Al cambiar la app, sube el número para que se renueve todo junto.
-const CACHE = "apuntes-v3";
+const CACHE = "apuntes-v4";
 const CORE = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest", "icon.svg", "icon-192.png"];
 
 self.addEventListener("install", (e) => {

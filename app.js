@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2026-10-20e";
+const APP_VERSION = "2026-10-20f";
 
 // ---------- Almacenamiento (IndexedDB, con memoria como respaldo) ----------
 const mem = { subjects: [], notes: [] };
@@ -523,6 +523,128 @@ async function renderStorage() {
   } catch (e) { $("storagestatus").textContent = `Versión ${APP_VERSION}.`; }
 }
 
+// ---------- Fondo personalizable con motivos de estudio ----------
+// Cada dibujo es un azulejo SVG que se repite; el color y el tamaño se eligen en Ajustes.
+const PATTERNS = {
+  ninguno: { label: "Liso", tile: 0 },
+  rayas: { label: "Cuaderno", tile: 32, svg: (c) => `<path d='M0 31.5H32' stroke='${c}' stroke-width='1'/>` },
+  cuadricula: { label: "Cuadrícula", tile: 24, svg: (c) => `<path d='M23.5 0V24M0 23.5H24' stroke='${c}' stroke-width='1' fill='none'/>` },
+  milimetrado: { label: "Milimetrado", tile: 50, svg: (c) => `<path d='${[10, 20, 30, 40].map(k => `M${k} 0V50M0 ${k}H50`).join("")}' stroke='${c}' stroke-width='.5' opacity='.6'/><path d='M49.5 0V50M0 49.5H50' stroke='${c}' stroke-width='1.2'/>` },
+  puntos: { label: "Puntos", tile: 22, svg: (c) => `<circle cx='11' cy='11' r='1.5' fill='${c}'/>` },
+  formulas: { label: "Fórmulas", tile: 300, svg: (c) => {
+    const t = [["π", 20, 40, -12, 30], ["E=mc²", 150, 30, 6, 20], ["√x", 250, 80, -8, 24], ["∑", 70, 120, 10, 34], ["H₂O", 190, 140, -6, 20], ["∫ f(x)dx", 20, 210, 4, 18], ["Δ", 250, 220, 0, 28], ["α+β", 140, 250, -10, 20], ["x²", 100, 60, 8, 22], ["∞", 230, 285, 0, 26], ["%", 40, 280, 0, 22]];
+    return t.map(([s, x, y, r, f]) => `<text x='${x}' y='${y}' font-size='${f}' font-family='Georgia,serif' fill='${c}' transform='rotate(${r} ${x} ${y})'>${s}</text>`).join("") +
+      `<g transform='translate(105 185)' fill='none' stroke='${c}' stroke-width='1.6'><ellipse rx='22' ry='8'/><ellipse rx='22' ry='8' transform='rotate(60)'/><ellipse rx='22' ry='8' transform='rotate(-60)'/><circle r='2.5' fill='${c}'/></g>`;
+  } },
+  iconos: { label: "Material", tile: 240, svg: (c) => {
+    const g = (x, y, r, d) => `<g transform='translate(${x} ${y}) rotate(${r})' fill='none' stroke='${c}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>${d}</g>`;
+    return g(20, 20, -8, "<path d='M0 4c8-4 16-4 22 1v26c-6-5-14-5-22-1zM44 4c-8-4-16-4-22 1v26c6-5 14-5 22-1z'/>") + // libro
+      g(150, 18, 35, "<path d='M0 0h8v40l-4 8-4-8zM0 8h8'/>") + // lápiz
+      g(95, 95, 0, "<path d='M12 0a12 12 0 0 0-7 22v6h14v-6A12 12 0 0 0 12 0zM6 32h12M8 36h8'/>") + // bombilla
+      g(185, 110, -6, "<path d='M0 10 22 0l22 10-22 10zM8 14v10c8 6 20 6 28 0V14M44 10v14'/>") + // birrete
+      g(25, 150, 10, "<path d='M8 0h12M11 0v14L2 34c-1 3 1 5 4 5h16c3 0 5-2 4-5l-9-20V0M6 26h16'/>") + // matraz
+      g(140, 180, -12, "<path d='M0 0h44v12H0zM8 0v5M16 0v7M24 0v5M32 0v7M40 0v5'/>") + // regla
+      g(210, 205, 0, "<path d='m10 0 3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z'/>") + // estrella
+      g(85, 210, -20, "<circle cx='9' cy='9' r='8'/><circle cx='29' cy='9' r='8'/><path d='M17 9h4'/>"); // gafas
+  } },
+  estrellas: { label: "Estrellas", tile: 160, svg: (c) => [[20, 30, 1.6], [90, 15, 1], [140, 60, 1.8], [60, 80, 1.1], [120, 120, 1.4], [30, 130, 1], [80, 150, 1.7], [150, 145, .9]].map(([x, y, r]) => `<circle cx='${x}' cy='${y}' r='${r}' fill='${c}'/>`).join("") + `<path d='M100 40l2 5 5 2-5 2-2 5-2-5-5-2 5-2z' fill='${c}'/>` },
+  corazones: { label: "Corazones", tile: 90, svg: (c) => `<path d='M22 30c-6-5-10-8-10-13a5 5 0 0 1 10-2 5 5 0 0 1 10 2c0 5-4 8-10 13z' fill='none' stroke='${c}' stroke-width='1.6'/><path d='M67 75c-4-3-7-6-7-9a3.5 3.5 0 0 1 7-1.5 3.5 3.5 0 0 1 7 1.5c0 3-3 6-7 9z' fill='${c}'/>` }
+};
+const BG_PRESETS = {
+  clasico: { label: "Clásico" },
+  cuaderno: { label: "Cuaderno", color: "#fbf8f0", pattern: "rayas", patColor: "#8fb3e8", opacity: 0.55 },
+  milimetrado: { label: "Papel milimetrado", color: "#f3f8f4", pattern: "milimetrado", patColor: "#7fb89a", opacity: 0.45 },
+  bullet: { label: "Bullet journal", color: "#f7f3ee", pattern: "puntos", patColor: "#9a8f80", opacity: 0.6 },
+  pizarra: { label: "Pizarra", color: "#28392f", pattern: "formulas", patColor: "#ffffff", opacity: 0.14 },
+  ciencias: { label: "Ciencias", color: "#eef3ff", color2: "#f6efff", pattern: "formulas", patColor: "#5b6fd6", opacity: 0.16 },
+  material: { label: "Material escolar", color: "#fff7ec", pattern: "iconos", patColor: "#e08a3c", opacity: 0.22 },
+  noche: { label: "Noche de estudio", color: "#141a33", color2: "#2b1f4d", pattern: "estrellas", patColor: "#ffe9a8", opacity: 0.55 },
+  rosa: { label: "Rosa", color: "#fdf0f5", color2: "#fff6ec", pattern: "corazones", patColor: "#e0709a", opacity: 0.25 }
+};
+const bgCfg = () => readJSON("fondo", {});
+function setBg(patch) { ls.set("fondo", JSON.stringify({ ...bgCfg(), ...patch })); applyPrefs(); }
+const lum = (hex) => {
+  const m = /^#?([\da-f]{6})$/i.exec(hex || ""); if (!m) return 1;
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const mix = (a, b, t) => { // mezcla dos colores hex
+  const p = (h) => [0, 2, 4].map(i => parseInt(h.replace("#", "").slice(i, i + 2), 16));
+  const [x, y] = [p(a), p(b)];
+  return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("");
+};
+function patternURL(name, color, scale = 1) {
+  const p = PATTERNS[name]; if (!p || !p.tile) return null;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${p.tile}' height='${p.tile}' viewBox='0 0 ${p.tile} ${p.tile}'>${p.svg(color)}</svg>`;
+  return { url: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`, size: Math.round(p.tile * scale) };
+}
+function applyBg() {
+  const b = bgCfg();
+  let fx = $("bgfx");
+  if (!fx) { fx = document.createElement("div"); fx.id = "bgfx"; fx.setAttribute("aria-hidden", "true"); fx.innerHTML = `<div class="photo"></div><div class="veil"></div><div class="pat"></div>`; document.body.prepend(fx); }
+  const photo = ls.get("fondo-foto");
+  const custom = !!(b.color || photo);
+  fx.hidden = !custom && (!b.pattern || b.pattern === "ninguno");
+  // Con un fondo propio, el tema claro u oscuro lo decide el fondo para que siempre se lea bien.
+  const darkBg = b.color ? (lum(b.color) + lum(b.color2 || b.color)) / 2 < 0.18 : null;
+  fx.style.background = b.color ? (b.color2 ? `linear-gradient(${b.angle ?? 160}deg, ${b.color}, ${b.color2})` : b.color) : "var(--paper)";
+  const ph = fx.querySelector(".photo"), veil = fx.querySelector(".veil"), pat = fx.querySelector(".pat");
+  ph.style.backgroundImage = photo ? `url("${photo}")` : "none";
+  ph.style.filter = photo && b.blur ? `blur(${b.blur}px)` : "none";
+  veil.style.opacity = photo ? (b.veil ?? 0.55) : 0;
+  const pc = b.patColor || (darkBg ? "#ffffff" : getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#2b4fd8");
+  const pu = patternURL(b.pattern, pc, b.size || 1);
+  pat.style.backgroundImage = pu ? pu.url : "none";
+  pat.style.backgroundSize = pu ? `${pu.size}px ${pu.size}px` : "";
+  pat.style.opacity = b.opacity ?? 0.3;
+  document.documentElement.classList.toggle("glass", b.panels === "cristal");
+  document.documentElement.classList.toggle("hasbg", !fx.hidden);
+  return darkBg;
+}
+async function setBgPhoto(file) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, 1400 / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement("canvas"); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+    cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
+    ls.set("fondo-foto", cv.toDataURL("image/jpeg", 0.8));
+    if (!ls.get("fondo-foto")) throw new Error();
+    applyPrefs(); renderPrefs(); toast("Foto de fondo puesta");
+  } catch (e) { toast("No se pudo usar esa foto. Prueba con otra."); }
+}
+function bgPrefsHtml() {
+  const b = bgCfg(), photo = ls.get("fondo-foto");
+  const active = Object.entries(BG_PRESETS).find(([, p]) => p.color === b.color && p.pattern === b.pattern && (p.color2 || null) === (b.color2 || null))?.[0] || (!b.color && !b.pattern ? "clasico" : null);
+  const prev = (p) => { const pu = patternURL(p.pattern, p.patColor || "#2b4fd8", 0.6); return `background:${p.color2 ? `linear-gradient(160deg,${p.color},${p.color2})` : p.color || "var(--paper)"};${pu ? `--pat:${pu.url};--patsize:${pu.size}px;--patop:${Math.min(1, (p.opacity || .3) * 1.6)}` : ""}`; };
+  const pc = b.patColor || "#2b4fd8";
+  return `
+    <p class="note">Fondos listos</p>
+    <div class="bgpresets">${Object.entries(BG_PRESETS).map(([k, p]) => `<button class="bgp" data-bgpreset="${k}" aria-pressed="${active === k}"><span class="sw" style="${esc(prev(p))}"></span>${p.label}</button>`).join("")}</div>
+    <details class="bgcustom" ${ls.get("fondo-abierto") === "1" ? "open" : ""}><summary>Personalizar el fondo a tu gusto</summary>
+      <div class="stack" style="margin-top:10px">
+        <div class="row"><label class="note" for="bgcolor">Color</label><input type="color" id="bgcolor" value="${esc(b.color || "#f6f8fb")}">
+          <label class="note" for="bgcolor2">Degradado</label><input type="color" id="bgcolor2" value="${esc(b.color2 || b.color || "#f6f8fb")}" ${b.color2 ? "" : "data-off='1'"}>
+          <button class="small ghost" id="bggrad">${b.color2 ? "Quitar degradado" : "Añadir degradado"}</button></div>
+        ${b.color2 ? `<label class="note" for="bgangle">Dirección del degradado</label><input type="range" id="bgangle" min="0" max="360" step="15" value="${b.angle ?? 160}">` : ""}
+        <p class="note">Dibujo</p>
+        <div class="bgpats">${Object.entries(PATTERNS).map(([k, p]) => { const pu = patternURL(k, pc, 0.5); return `<button class="bgpat" data-bgpat="${k}" aria-pressed="${(b.pattern || "ninguno") === k}"><span class="sw" style="${pu ? esc(`--pat:${pu.url};--patsize:${pu.size}px;--patop:1`) : ""}"></span>${p.label}</button>`; }).join("")}</div>
+        ${b.pattern && b.pattern !== "ninguno" ? `
+          <div class="row"><label class="note" for="bgpatcolor">Color del dibujo</label><input type="color" id="bgpatcolor" value="${esc(pc)}"></div>
+          <label class="note" for="bgopacity">Intensidad</label><input type="range" id="bgopacity" min="0.05" max="1" step="0.05" value="${b.opacity ?? 0.3}">
+          <label class="note" for="bgsize">Tamaño</label><input type="range" id="bgsize" min="0.5" max="2.5" step="0.1" value="${b.size || 1}">` : ""}
+        <p class="note">Foto propia de fondo</p>
+        <div class="actions"><label class="btn small" for="bgphoto">${photo ? "Cambiar foto" : "Elegir foto"}</label><input type="file" id="bgphoto" accept="image/*" hidden>
+          ${photo ? `<button class="small ghost" id="bgphotodel">Quitar foto</button>` : ""}</div>
+        ${photo ? `<label class="note" for="bgveil">Velo para que se lea bien</label><input type="range" id="bgveil" min="0" max="0.9" step="0.05" value="${b.veil ?? 0.55}">
+          <label class="note" for="bgblur">Desenfoque</label><input type="range" id="bgblur" min="0" max="20" step="1" value="${b.blur || 0}">` : ""}
+        <p class="note">Paneles</p><div class="actions">
+          <button class="tab small" data-bgpanels="solidos" aria-pressed="${b.panels !== "cristal"}">Sólidos</button>
+          <button class="tab small" data-bgpanels="cristal" aria-pressed="${b.panels === "cristal"}">Cristal (se ve el fondo)</button></div>
+        <div class="actions"><button class="small ghost" id="bgreset">Volver al fondo normal</button></div>
+      </div>
+    </details>`;
+}
+
 // ---------- Ajustes personales: color, tema, letra, voz y estudio ----------
 const COLORS = {
   azul: ["Azul", "#2b4fd8", "#e4eaff", "#7d97ff", "#232d55"],
@@ -532,8 +654,18 @@ const COLORS = {
   naranja: ["Naranja", "#b85412", "#ffeadb", "#ffa564", "#45291a"],
   turquesa: ["Turquesa", "#0f7d8c", "#dcf3f5", "#5fd0de", "#173b40"]
 };
+function accentSet() {
+  if (ls.get("color") === "propio") {
+    const c = /^#[\da-f]{6}$/i.test(ls.get("color-propio") || "") ? ls.get("color-propio") : "#2b4fd8";
+    // versión oscura legible sobre blanco y versión clara para el tema oscuro
+    let la = c; while (lum(la) > 0.18) la = mix(la, "#000000", 0.08);
+    let da = c; while (lum(da) < 0.35) da = mix(da, "#ffffff", 0.08);
+    return [null, la, mix(la, "#ffffff", 0.88), da, mix(da, "#11161f", 0.75)];
+  }
+  return COLORS[ls.get("color")] || COLORS.azul;
+}
 function applyPrefs() {
-  const [, la, lsoft, da, dsoft] = COLORS[ls.get("color")] || COLORS.azul;
+  const [, la, lsoft, da, dsoft] = accentSet();
   let st = $("themevars");
   if (!st) { st = document.createElement("style"); st.id = "themevars"; document.head.appendChild(st); }
   st.textContent = `:root{--accent:${la};--accent-soft:${lsoft}}
@@ -541,6 +673,8 @@ function applyPrefs() {
     :root[data-theme="dark"]{--accent:${da};--accent-soft:${dsoft}}`;
   const tema = ls.get("tema") || "auto";
   if (tema === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme = tema;
+  const darkBg = applyBg();
+  if (darkBg !== null) document.documentElement.dataset.theme = darkBg ? "dark" : "light";
   document.documentElement.style.fontSize = { normal: "100%", grande: "112.5%", enorme: "125%" }[ls.get("letra")] || "100%";
   const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = la;
 }
@@ -555,8 +689,11 @@ function renderPrefs() {
   box.innerHTML = `
     <section><h3>Apariencia</h3>
       <p class="note">Color de la app</p>
-      <div class="swatches">${Object.entries(COLORS).map(([k, v]) => `<button class="swatch" data-color="${k}" style="--sw:${v[1]}" aria-pressed="${k === col}"><span></span>${v[0]}</button>`).join("")}</div>
-      <p class="note">Tema</p><div class="actions">${chip("tema", "auto", "Como el móvil", "auto")}${chip("tema", "light", "Claro", "auto")}${chip("tema", "dark", "Oscuro", "auto")}</div>
+      <div class="swatches">${Object.entries(COLORS).map(([k, v]) => `<button class="swatch" data-color="${k}" style="--sw:${v[1]}" aria-pressed="${k === col}"><span></span>${v[0]}</button>`).join("")}
+        <label class="btn swatch" aria-pressed="${col === "propio"}" style="--sw:${esc(ls.get("color-propio") || "#ff6b6b")}"><span></span>El que quieras<input type="color" id="accentpick" value="${esc(ls.get("color-propio") || "#ff6b6b")}" class="vh"></label></div>
+      <p class="note">Tema</p>${bgCfg().color ? `<p class="note">Con un fondo de color, el tema claro u oscuro se elige solo para que se lea bien.</p>` : `<div class="actions">${chip("tema", "auto", "Como el móvil", "auto")}${chip("tema", "light", "Claro", "auto")}${chip("tema", "dark", "Oscuro", "auto")}</div>`}
+      <h3 style="margin-top:6px">Fondo</h3>
+      ${bgPrefsHtml()}
       <p class="note">Tamaño de letra</p><div class="actions">${chip("letra", "normal", "Normal", "normal")}${chip("letra", "grande", "Grande", "normal")}${chip("letra", "enorme", "Muy grande", "normal")}</div>
     </section>
     <section><h3>Voz</h3>
@@ -1767,6 +1904,16 @@ document.addEventListener("click", async (e) => {
   const t = e.target.closest("button"); if (!t) return;
   const n = notes.find(x => x.id === openId);
   // ajustes personales
+  if (t.dataset.bgpreset) {
+    const p = BG_PRESETS[t.dataset.bgpreset]; const keep = bgCfg();
+    ls.set("fondo", JSON.stringify(p.color ? { color: p.color, color2: p.color2, pattern: p.pattern, patColor: p.patColor, opacity: p.opacity, panels: keep.panels } : { panels: keep.panels }));
+    applyPrefs(); renderPrefs(); return;
+  }
+  if (t.dataset.bgpat) { setBg({ pattern: t.dataset.bgpat, opacity: ["rayas", "cuadricula", "puntos", "milimetrado", "estrellas"].includes(t.dataset.bgpat) ? 0.45 : 0.2 }); renderPrefs(); return; }
+  if (t.dataset.bgpanels) { setBg({ panels: t.dataset.bgpanels }); renderPrefs(); return; }
+  if (t.id === "bggrad") { const b = bgCfg(); setBg(b.color2 ? { color2: null } : { color: b.color || "#f6f8fb", color2: mix(b.color || "#f6f8fb", "#c9b8ff", 0.35) }); renderPrefs(); return; }
+  if (t.id === "bgphotodel") { ls.del("fondo-foto"); applyPrefs(); renderPrefs(); return; }
+  if (t.id === "bgreset") { ls.del("fondo"); ls.del("fondo-foto"); applyPrefs(); renderPrefs(); toast("Fondo normal"); return; }
   if (t.dataset.color) { ls.set("color", t.dataset.color); applyPrefs(); renderPrefs(); return; }
   if (t.dataset.pref) {
     const k = t.dataset.pref, v = t.dataset.val; ls.set(k, v);
@@ -1911,7 +2058,22 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.ask) { ask(n, t.dataset.ask); return; }
   if (t.id === "clearchat") { n.chat = []; await saveNote(n); renderViewer(); return; }
 });
+document.addEventListener("input", (e) => {
+  const id = e.target.id, v = e.target.value;
+  if (id === "bgcolor") setBg({ color: v });
+  else if (id === "bgcolor2") setBg({ color2: v, color: bgCfg().color || "#f6f8fb" });
+  else if (id === "bgpatcolor") setBg({ patColor: v });
+  else if (id === "bgopacity") setBg({ opacity: +v });
+  else if (id === "bgsize") setBg({ size: +v });
+  else if (id === "bgveil") setBg({ veil: +v });
+  else if (id === "bgblur") setBg({ blur: +v });
+  else if (id === "bgangle") setBg({ angle: +v });
+  else if (id === "accentpick") { ls.set("color", "propio"); ls.set("color-propio", v); applyPrefs(); }
+});
+document.addEventListener("toggle", (e) => { if (e.target.classList?.contains("bgcustom")) ls.set("fondo-abierto", e.target.open ? "1" : "0"); }, true);
 document.addEventListener("change", (e) => {
+  if (["bgcolor", "bgcolor2", "bgpatcolor", "accentpick"].includes(e.target.id)) renderPrefs();
+  if (e.target.id === "bgphoto" && e.target.files[0]) { setBgPhoto(e.target.files[0]); e.target.value = ""; }
   const n = notes.find(x => x.id === openId);
   if (e.target.id === "rate") { setRate(+e.target.value); if (rd.playing) rdPlay(); }
   if (e.target.id === "vrate") { setRate(+e.target.value); if (vp.playing && n?.video) vPlayScene(n); }

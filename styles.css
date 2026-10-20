@@ -347,3 +347,25 @@ details > summary { cursor: pointer; color: var(--ink-soft); }
 .grade b { font-family: var(--font-display); font-size: 1.3rem; }
 .grade.good { background: var(--ok-bg); } .grade.mid { background: var(--warn-bg); } .grade.low { background: var(--bad-bg); }
 .grade ul { margin: 0; padding-left: 1.2em; }
+
+/* Fondo personalizable */
+#bgfx { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+#bgfx > div { position: absolute; inset: 0; }
+#bgfx .photo { background-size: cover; background-position: center; inset: -30px; }
+#bgfx .veil { background: var(--paper); }
+#bgfx .pat { background-repeat: repeat; }
+html.hasbg body { background: transparent; }
+html.hasbg header.top, html.hasbg .listhead, html.hasbg .uprow label { text-shadow: 0 1px 8px var(--paper); }
+html.glass .panel, html.glass .viewer, html.glass .item, html.glass label.drop, html.glass .tab:not([aria-pressed="true"]) {
+  background: color-mix(in srgb, var(--sheet) 72%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}
+.vh { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+label.swatch { position: relative; cursor: pointer; }
+.bgpresets, .bgpats { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.bgp, .bgpat { flex-direction: column; gap: 6px; border-radius: 12px; padding: 6px; font-size: .82rem; min-height: 0; }
+.bgp .sw, .bgpat .sw { position: relative; display: block; width: 100%; height: 54px; border-radius: 8px; border: 1px solid var(--line); overflow: hidden; background-color: var(--paper); }
+.bgp .sw::after, .bgpat .sw::after { content: ""; position: absolute; inset: 0; background-image: var(--pat, none); background-size: var(--patsize, auto); opacity: var(--patop, 1); }
+.bgp[aria-pressed="true"], .bgpat[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+input[type="color"] { flex: none; width: 46px; height: 38px; padding: 2px; border-radius: 10px; cursor: pointer; min-height: 0; }
+input[type="range"] { width: 100%; accent-color: var(--accent); min-height: 0; padding: 0; border: 0; background: none; }
+.bgcustom > summary { font-weight: 700; color: var(--ink); }

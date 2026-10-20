@@ -298,7 +298,8 @@ const FALLBACK_MODEL = "gemini-2.5-flash";
 class AIError extends Error { constructor(msg, status) { super(msg); this.status = status || 0; } }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-async function gfetch(path, opts = {}) {
+async function gfetch(path, opts = {}) { return (await gresponse(path, opts)).json(); }
+async function gresponse(path, opts = {}) {
   const key = ls.get("gemini-key");
   if (!key) throw new AIError("Falta conectar con Gemini. Pulsa «Conexión con Gemini» arriba y pega tu clave.");
   let r;
@@ -315,9 +316,9 @@ async function gfetch(path, opts = {}) {
     if (r.status === 400 && /API key/i.test(msg)) throw new AIError("La clave de Gemini no es válida. Vuelve a copiarla desde aistudio.google.com/apikey.");
     if (r.status === 403) throw new AIError("Gemini ha rechazado la clave. Comprueba que está bien copiada o crea una nueva.");
     if (r.status === 413 || /too large|exceeds/i.test(msg)) throw new AIError("El archivo es demasiado grande para Gemini. Prueba a dividirlo en partes más pequeñas.");
-    throw new AIError("Gemini ha devuelto un error (" + r.status + "). " + msg);
+    throw new AIError("Gemini ha devuelto un error (" + r.status + "). " + msg, r.status);
   }
-  return r.json();
+  return r;
 }
 
 // Modelos Flash de la cuenta gratuita, del mejor al de reserva.
@@ -349,45 +350,106 @@ function toB64(blob) {
     fr.readAsDataURL(blob);
   });
 }
+// Lo que se manda a Gemini, lo más ligero posible: texto siempre que se pueda
+// (Word, texto y PDF con texto), y las fotos reducidas. Se guarda para no repetirlo.
 async function noteParts(n) {
-  if (n.kind === "pdf" || n.kind === "img") {
-    if (n.blob.size > 18 * 1048576) throw new AIError("Este archivo pesa más de 18 MB y Gemini no lo acepta así. Divídelo en partes más pequeñas.");
-    const mime = n.kind === "pdf" ? "application/pdf" : (n.blob.type || "image/jpeg");
-    return [{ inline_data: { mime_type: mime, data: await toB64(n.blob) } }];
+  if (n.kind !== "img" && n.kind !== "pdf") return [{ text: "APUNTES:\n\n" + await noteText(n) }];
+  if (n.kind === "pdf") {
+    if (n.pdfText === undefined) {
+      n.pdfText = await pdfToText(n).catch(() => null);
+      put("notes", n).catch(() => {});
+    }
+    if (n.pdfText) return [{ text: "APUNTES (texto sacado de un PDF):\n\n" + n.pdfText }];
   }
-  return [{ text: "APUNTES:\n\n" + await noteText(n) }];
+  let blob = n.blob, mime = n.kind === "pdf" ? "application/pdf" : (n.blob.type || "image/jpeg");
+  if (n.kind === "img") { const small = await shrinkImage(n.blob).catch(() => null); if (small) { blob = small; mime = "image/jpeg"; } }
+  if (blob.size > 18 * 1048576) throw new AIError("Este archivo pesa más de 18 MB y Gemini no lo acepta así. Divídelo en partes más pequeñas.");
+  return [{ inline_data: { mime_type: mime, data: await toB64(blob) } }];
+}
+// Devuelve el texto del PDF, o null si es un escaneo (entonces se manda el PDF entero).
+async function pdfToText(n) {
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await n.blob.arrayBuffer()) }).promise;
+  const pages = Math.min(pdf.numPages, 120), out = [];
+  for (let i = 1; i <= pages; i++) {
+    const tc = await (await pdf.getPage(i)).getTextContent();
+    out.push(tc.items.map(it => it.str + (it.hasEOL ? "\n" : " ")).join("").replace(/[ \t]+/g, " ").trim());
+  }
+  const text = out.join("\n\n");
+  return text.replace(/\s/g, "").length >= pages * 120 ? text : null;
+}
+async function shrinkImage(blob) {
+  const bmp = await createImageBitmap(blob);
+  const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  if (scale === 1 && blob.size < 1.5 * 1048576) return null;
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(bmp.width * scale); cv.height = Math.round(bmp.height * scale);
+  cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
+  return new Promise(res => cv.toBlob(b => res(b), "image/jpeg", 0.85));
 }
 async function noteText(n) {
   if (n.kind === "docx") return (await mammoth.extractRawText({ arrayBuffer: await n.blob.arrayBuffer() })).value;
   return n.blob.text();
 }
-async function generate(n, prompt, schema) {
+// Sin "pensar" largo: para resumir y hacer tests no hace falta y responde mucho antes.
+function thinkingFor(model) {
+  if (ls.get("nothink-" + model)) return null;
+  return /gemini-2\./.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: "low" };
+}
+// Con onText, el texto llega por partes y se va mostrando mientras se escribe.
+async function generate(n, prompt, schema, onText) {
   const models = await pickModels();
-  const body = JSON.stringify({
-    contents: [{ role: "user", parts: [...await noteParts(n), { text: prompt }] }],
-    generationConfig: schema ? { responseMimeType: "application/json", responseSchema: schema, temperature: 0.7 } : { temperature: 0.4 }
-  });
-  let d, lastErr;
+  const parts = [...await noteParts(n), { text: prompt }];
+  const bodyFor = (model) => {
+    const cfg = schema ? { responseMimeType: "application/json", responseSchema: schema, temperature: 0.7 } : { temperature: 0.4 };
+    const th = thinkingFor(model); if (th) cfg.thinkingConfig = th;
+    return JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: cfg });
+  };
+  let text = null, lastErr, blocked = false;
   outer: for (const model of models) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try { d = await gfetch(`/models/${model}:generateContent`, { method: "POST", body }); break outer; }
-      catch (e) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (onText) {
+          const r = await gresponse(`/models/${model}:streamGenerateContent?alt=sse`, { method: "POST", body: bodyFor(model) });
+          const reader = r.body.getReader(), dec = new TextDecoder();
+          let buf = "", acc = "";
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            let i;
+            while ((i = buf.indexOf("\n")) >= 0) {
+              const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+              if (!line.startsWith("data:")) continue;
+              let d; try { d = JSON.parse(line.slice(5)); } catch (e) { continue; }
+              if (d.promptFeedback?.blockReason) blocked = true;
+              const piece = (d.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("");
+              if (piece) { acc += piece; onText(acc); }
+            }
+          }
+          text = acc.trim();
+        } else {
+          const d = await gfetch(`/models/${model}:generateContent`, { method: "POST", body: bodyFor(model) });
+          if (d.promptFeedback?.blockReason) blocked = true;
+          text = (d.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("").trim();
+        }
+        break outer;
+      } catch (e) {
         lastErr = e;
         if (!(e instanceof AIError)) throw e;
+        if (e.status === 400 && /thinking/i.test(e.message) && !ls.get("nothink-" + model)) { ls.set("nothink-" + model, "1"); continue; }
         if (e.status === 404) { ls.del("gemini-models"); break; }
         if (e.status === 429) break; // cada modelo tiene su propio cupo: se prueba el siguiente
         if (e.status >= 500) {
           if (busy && !busy.retry) { busy.retry = true; refreshIfOpen(n.id); }
-          await sleep(attempt ? 6000 : 2500); continue;
+          if (attempt === 1) break; // tras dos intentos, se prueba otro modelo
+          await sleep(2500); continue;
         }
         throw e;
       }
     }
   }
-  if (!d) throw lastErr || new AIError("No se pudo conectar con Gemini.");
-  const c = (d.candidates || [])[0];
-  const text = (c?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("").trim();
-  if (!text) throw new AIError(d.promptFeedback?.blockReason ? "Gemini no ha querido procesar este apunte." : "Gemini no ha devuelto nada. Vuelve a intentarlo.");
+  if (text === null) throw lastErr || new AIError("No se pudo conectar con Gemini.");
+  if (!text) throw new AIError(blocked ? "Gemini no ha querido procesar este apunte." : "Gemini no ha devuelto nada. Vuelve a intentarlo.");
   return text;
 }
 
@@ -611,8 +673,8 @@ function renderSummary(n) {
     <div class="actions">${modeBtn("corto", "Corto")}${modeBtn("detallado", "Detallado")}
       <button class="primary" id="gosum" ${isBusy || busy ? "disabled" : ""}>${n.summary ? "Hacer otro resumen" : "Hacer resumen"}</button></div>
     ${errHtml(n, "resumen")}
-    ${isBusy ? busyHtml("Gemini está leyendo tus apuntes…") : ""}
-    ${n.summary ? `${canSpeak ? `<div class="actions">
+    ${isBusy ? busyHtml(busy.partial ? "Gemini está escribiendo…" : "Gemini está leyendo tus apuntes…") : ""}
+    ${isBusy && busy.partial ? `<div class="md" id="partial">${md(busy.partial)}</div>` : n.summary ? `${canSpeak ? `<div class="actions">
         <button id="speakbtn">${speaking === n.id ? "Parar audio" : "Escuchar resumen"}</button>
         <label class="note" for="rate">Velocidad</label>
         <select id="rate">${[0.8, 1, 1.25, 1.5].map(r => `<option value="${r}" ${r === speakRate ? "selected" : ""}>${String(r).replace(".", ",")}x</option>`).join("")}</select>
@@ -858,7 +920,11 @@ async function runAI(n, what) {
   busy = { id: n.id, what }; lastError = null; refreshIfOpen(n.id);
   try {
     if (what === "resumen") {
-      const text = await generate(n, SUMMARY_PROMPTS[sumMode]);
+      const text = await generate(n, SUMMARY_PROMPTS[sumMode], null, (partial) => {
+        busy.partial = partial;
+        const el = $("partial");
+        if (el && openId === n.id) el.innerHTML = md(partial); else if (openId === n.id && view === "resumen") renderViewer();
+      });
       n.summary = { mode: sumMode, text, at: Date.now() };
     } else if (what === "video") {
       const raw = await generate(n, VIDEO_PROMPT, VIDEO_SCHEMA);

@@ -32,6 +32,10 @@ Desde el icono se abre como una app normal y funciona sin internet para ver los 
 
 Los datos van a tu proyecto de Supabase. Nadie puede leerlos sin el código secreto que va dentro del enlace.
 
+## Buzón de sugerencias
+
+El botón **💬 Buzón** deja a Erika escribir lo que le gusta, lo que no, ideas o fallos. Con la sincronización puesta, cada sugerencia llega sola a los demás dispositivos conectados con el mismo enlace, y desde ahí se puede responder y marcar como hecha. Sin sincronización, cada sugerencia tiene un botón «Mandar por WhatsApp». «Copiar todas» las copia en texto para pegarlas donde haga falta.
+
 ## Técnica
 
 HTML, CSS y JavaScript sin compilar (`index.html`, `styles.css`, `app.js`), publicados con GitHub Pages desde `main`. `sw.js` guarda la app para abrirla sin conexión. pdf.js y mammoth se cargan solo al abrir un PDF o un Word.

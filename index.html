@@ -31,6 +31,7 @@
     </div>
     <div class="topbtns">
       <button id="reviewbtn" class="primary">Repasar<span class="badge" id="duecount">0</span></button>
+      <button id="sugbtn" aria-label="Buzón de sugerencias">💬 Buzón<span class="badge" id="sugcount" hidden>0</span></button>
       <button id="settingsbtn"><span class="dot" id="keydot"></span>Ajustes</button>
     </div>
   </header>
@@ -54,6 +55,11 @@
     <span id="backuptext">Hace tiempo que no guardas una copia de tus apuntes.</span>
     <span class="actions"><button class="small primary" id="bannerbackup">Guardar copia</button><button class="small ghost" id="bannerlater">Luego</button></span>
   </div>
+
+  <section class="panel" id="ideas" hidden aria-label="Buzón de sugerencias">
+    <div class="row" style="justify-content:space-between"><h2>Buzón de sugerencias</h2><button class="small ghost" id="ideasclose">Cerrar</button></div>
+    <div id="sugbox"></div>
+  </section>
 
   <section class="panel" id="settings" hidden aria-label="Ajustes">
     <div class="row" style="justify-content:space-between"><h2>Ajustes</h2><button class="small ghost" id="settingsclose">Cerrar</button></div>

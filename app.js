@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2026-10-20g";
+const APP_VERSION = "2026-10-21a";
 
 // ---------- Almacenamiento (IndexedDB, con memoria como respaldo) ----------
 const mem = { subjects: [], notes: [] };
@@ -498,6 +498,7 @@ function renderTop() {
   const snooze = +ls.get("aviso-copia-luego") || 0;
   const show = own >= 3 && Date.now() - last > 14 * DAY && Date.now() > snooze;
   $("backupbanner").hidden = !show;
+  renderSugBadge();
   if (show) $("backuptext").textContent = last ? `Hace ${Math.floor((Date.now() - last) / DAY)} días que no guardas una copia de tus apuntes.` : "Ya tienes varios apuntes: guarda una copia por si cambias de móvil.";
   renderToday();
 }
@@ -622,14 +623,14 @@ function bgPrefsHtml() {
     <div class="bgpresets">${Object.entries(BG_PRESETS).map(([k, p]) => `<button class="bgp" data-bgpreset="${k}" aria-pressed="${active === k}"><span class="sw" style="${esc(prev(p))}"></span>${p.label}</button>`).join("")}</div>
     <details class="bgcustom" ${ls.get("fondo-abierto") === "1" ? "open" : ""}><summary>Personalizar el fondo a tu gusto</summary>
       <div class="stack" style="margin-top:10px">
-        <div class="row"><label class="note" for="bgcolor">Color</label><input type="color" id="bgcolor" value="${esc(b.color || "#f6f8fb")}">
-          <label class="note" for="bgcolor2">Degradado</label><input type="color" id="bgcolor2" value="${esc(b.color2 || b.color || "#f6f8fb")}" ${b.color2 ? "" : "data-off='1'"}>
+        <div class="row wrap"><button class="small cpinline" data-cpick="bg.color"><span style="background:${esc(b.color || "#f6f8fb")}"></span>Color</button>
+          ${b.color2 ? `<button class="small cpinline" data-cpick="bg.color2"><span style="background:${esc(b.color2)}"></span>Segundo color</button>` : ""}
           <button class="small ghost" id="bggrad">${b.color2 ? "Quitar degradado" : "Añadir degradado"}</button></div>
         ${b.color2 ? `<label class="note" for="bgangle">Dirección del degradado</label><input type="range" id="bgangle" min="0" max="360" step="15" value="${b.angle ?? 160}">` : ""}
         <p class="note">Dibujo</p>
         <div class="bgpats">${Object.entries(PATTERNS).map(([k, p]) => { const pu = patternURL(k, pc, 0.5); return `<button class="bgpat" data-bgpat="${k}" aria-pressed="${(b.pattern || "ninguno") === k}"><span class="sw" style="${pu ? esc(`--pat:${pu.url};--patsize:${pu.size}px;--patop:1`) : ""}"></span>${p.label}</button>`; }).join("")}</div>
         ${b.pattern && b.pattern !== "ninguno" ? `
-          <div class="row"><label class="note" for="bgpatcolor">Color del dibujo</label><input type="color" id="bgpatcolor" value="${esc(pc)}"></div>
+          <div class="row"><button class="small cpinline" data-cpick="bg.patColor"><span style="background:${esc(pc)}"></span>Color del dibujo</button></div>
           <label class="note" for="bgopacity">Intensidad</label><input type="range" id="bgopacity" min="0.05" max="1" step="0.05" value="${b.opacity ?? 0.3}">
           <label class="note" for="bgsize">Tamaño</label><input type="range" id="bgsize" min="0.5" max="2.5" step="0.1" value="${b.size || 1}">` : ""}
         <p class="note">Foto propia de fondo</p>
@@ -643,6 +644,151 @@ function bgPrefsHtml() {
         <div class="actions"><button class="small ghost" id="bgreset">Volver al fondo normal</button></div>
       </div>
     </details>`;
+}
+
+// ---------- Selector de color propio (igual en todos los móviles y ordenadores) ----------
+const hexOk = (h) => /^#[\da-f]{6}$/i.test(h || "");
+function hexToHsl(hex) {
+  let [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  let h = 0, s = 0;
+  if (d) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h = Math.round(h * 60); if (h < 0) h += 360;
+  }
+  return [h, Math.round(s * 100), Math.round(l * 100)];
+}
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = (n) => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))))).toString(16).padStart(2, "0");
+  return "#" + f(0) + f(8) + f(4);
+}
+const PICK_SWATCHES = [0, 20, 40, 55, 90, 140, 170, 195, 215, 250, 275, 300, 330, 350]
+  .flatMap(h => [[h, 85, 88], [h, 70, 70], [h, 70, 50], [h, 75, 32]].map(a => hslToHex(...a)))
+  .concat(["#ffffff", "#f6f8fb", "#e6e6e6", "#bdbdbd", "#8a8a8a", "#5a5a5a", "#2e2e2e", "#141414", "#000000", "#fff8e7", "#f5ecd7", "#1d2a44"]);
+const cpick = { key: null, val: "#2b4fd8", hsl: [0, 0, 0] };
+// Cada color que se puede elegir: de dónde se lee, dónde se guarda y cómo se quita.
+function cpickTarget(key) {
+  if (key === "accent") return { title: "Color principal", get: () => ls.get("color-propio") || accentSet()[1], set: (v) => { ls.set("color", "propio"); ls.set("color-propio", v); applyPrefs(); }, reset: () => { ls.set("color", "azul"); applyPrefs(); } };
+  if (key.startsWith("bg.")) {
+    const f = key.slice(3), def = { color: "#f6f8fb", color2: "#e9ddff", patColor: "#2b4fd8" }[f];
+    return { title: { color: "Color del fondo", color2: "Segundo color del degradado", patColor: "Color del dibujo" }[f], get: () => bgCfg()[f] || (f === "color2" ? bgCfg().color : null) || def,
+      set: (v) => setBg(f === "color2" && !bgCfg().color ? { color: "#f6f8fb", color2: v } : { [f]: v }), reset: () => setBg({ [f]: null }) };
+  }
+  if (key.startsWith("c.")) {
+    const t = key.slice(2), p = PARTS.find(x => x[0] === t);
+    return { title: p[1], get: () => partColors()[t] || getComputedStyle(document.documentElement).getPropertyValue("--" + p[3]).trim() || "#888888",
+      set: (v) => setPartColor(t, v), reset: () => setPartColor(t, null) };
+  }
+  return null;
+}
+function openColorPicker(key) {
+  const tg = cpickTarget(key); if (!tg) return;
+  let v = String(tg.get() || "").trim(); if (!hexOk(v)) v = "#2b4fd8";
+  cpick.key = key; cpick.val = v.toLowerCase(); cpick.hsl = hexToHsl(cpick.val);
+  let box = $("cpick");
+  if (!box) { box = document.createElement("div"); box.id = "cpick"; box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true"); document.body.appendChild(box); }
+  box.innerHTML = `<div class="cpsheet">
+    <div class="cphead"><span class="cpprev" id="cpprev"></span><div><b>${esc(tg.title)}</b><input id="cphex" value="${cpick.val}" maxlength="7" aria-label="Código del color" spellcheck="false" autocomplete="off"></div></div>
+    <div class="cpgrid">${PICK_SWATCHES.map(h => `<button class="cpsw" data-cpv="${h}" style="--c:${h}" aria-label="${h}"></button>`).join("")}</div>
+    <label class="note" for="cph">Tono</label><input type="range" id="cph" min="0" max="359">
+    <label class="note" for="cps">Intensidad</label><input type="range" id="cps" min="0" max="100">
+    <label class="note" for="cpl">Claro / oscuro</label><input type="range" id="cpl" min="0" max="100">
+    <div class="actions"><button class="ghost" id="cpreset">Quitar</button><button class="primary" id="cpok">Listo</button></div>
+  </div>`;
+  box.hidden = false; document.documentElement.classList.add("lbopen");
+  cpPaint(false);
+}
+function cpPaint(apply = true) {
+  const [h, s, l] = cpick.hsl, v = cpick.val;
+  $("cpprev").style.background = v;
+  if (document.activeElement?.id !== "cphex") $("cphex").value = v;
+  $("cph").value = h; $("cps").value = s; $("cpl").value = l;
+  $("cph").style.background = `linear-gradient(90deg, ${[0, 60, 120, 180, 240, 300, 360].map(x => hslToHex(x % 360, Math.max(s, 40), 50)).join(",")})`;
+  $("cps").style.background = `linear-gradient(90deg, ${hslToHex(h, 0, l)}, ${hslToHex(h, 100, Math.min(Math.max(l, 25), 75))})`;
+  $("cpl").style.background = `linear-gradient(90deg, #000, ${hslToHex(h, s, 50)}, #fff)`;
+  document.querySelectorAll(".cpsw").forEach(b => b.setAttribute("aria-pressed", b.dataset.cpv === v));
+  if (apply) cpickTarget(cpick.key)?.set(v);
+}
+function cpSet(v, fromHsl) { cpick.val = v.toLowerCase(); if (!fromHsl) cpick.hsl = hexToHsl(cpick.val); cpPaint(); }
+function closeColorPicker() { const b = $("cpick"); if (!b || b.hidden) return; b.hidden = true; document.documentElement.classList.remove("lbopen"); cpick.key = null; renderPrefs(); }
+
+let cpDownOnBackdrop = false;
+document.addEventListener("pointerdown", (e) => { cpDownOnBackdrop = e.target.id === "cpick"; }, true);
+
+// ---------- Colores de cada parte de la app ----------
+// [clave, nombre, explicación, variable CSS]
+const PARTS = [
+  ["sheet", "Recuadros", "Las tarjetas y cajas grandes (apuntes, Hoy, Ajustes…)", "sheet"],
+  ["box", "Cajitas de texto", "El fondo detrás de los textos: subtítulos, audio, chat, datos…", "box"],
+  ["ink", "Texto", "El color de las letras", "ink"],
+  ["inksoft", "Texto secundario", "Fechas, notas y explicaciones pequeñas", "ink-soft"],
+  ["line", "Bordes", "Las líneas de alrededor de los recuadros", "line"],
+  ["marker", "Subrayado", "El rotulador del título", "marker"],
+  ["ok", "Aciertos", "Respuestas bien y cosas hechas", "ok"],
+  ["danger", "Fallos", "Respuestas mal y botón de borrar", "danger"],
+  ["video", "Vídeos", "El color de las escenas de los vídeos", "video"]
+];
+const PALETTES = {
+  clasica: ["Clásica", {}],
+  pastel: ["Pastel lila", { sheet: "#fbf8ff", box: "#f1eafc", ink: "#2e2346", inksoft: "#6f6390", line: "#e2d6f5", marker: "#ffc6e3", accent: "#7a4fd6", video: "#7a4fd6" }],
+  menta: ["Menta", { sheet: "#f8fffb", box: "#e6f6ee", ink: "#18392b", inksoft: "#4f7565", line: "#cfe9dc", marker: "#b8f0d0", accent: "#1f8a5b", video: "#1f8a5b" }],
+  melocoton: ["Melocotón", { sheet: "#fffaf5", box: "#ffeede", ink: "#3d2516", inksoft: "#8a6550", line: "#f6dcc6", marker: "#ffd59e", accent: "#d0612a", video: "#d0612a" }],
+  cielo: ["Cielo", { sheet: "#f7fbff", box: "#e3f1ff", ink: "#12304d", inksoft: "#4f6f8f", line: "#cfe3f6", marker: "#bfe3ff", accent: "#1677c9", video: "#1677c9" }],
+  noche: ["Noche", { sheet: "#1d2233", box: "#262c42", ink: "#eef0fa", inksoft: "#a7aeca", line: "#353d59", marker: "#6b5bc4", accent: "#9b8cff", video: "#5a48d6" }],
+  contraste: ["Alto contraste", { sheet: "#ffffff", box: "#ffffff", ink: "#000000", inksoft: "#262626", line: "#000000", marker: "#ffe100", accent: "#0040c0", ok: "#006b2e", danger: "#b00000" }]
+};
+const partColors = () => readJSON("colores", {});
+function setPartColor(k, v) { const c = partColors(); if (v) c[k] = v; else delete c[k]; ls.set("colores", JSON.stringify(c)); applyPrefs(); }
+function applyPalette(id) {
+  const [, p] = PALETTES[id] || PALETTES.clasica;
+  const { accent, ...rest } = p;
+  ls.set("colores", JSON.stringify(rest));
+  if (accent) { ls.set("color", "propio"); ls.set("color-propio", accent); } else if (ls.get("color") === "propio") ls.set("color", "azul");
+  applyPrefs(); renderPrefs(); toast("Colores cambiados");
+}
+// Si se cambia el color de los recuadros y no el del texto, el texto se pone claro u oscuro solo para que se lea.
+function partsCss() {
+  const c = partColors(), v = [];
+  for (const [k, , , css] of PARTS) if (hexOk(c[k]) && k !== "video") v.push(`--${css}:${c[k]}`);
+  const darkSheet = hexOk(c.sheet) ? lum(c.sheet) < 0.2 : null;
+  if (darkSheet !== null) {
+    if (!hexOk(c.ink)) v.push(`--ink:${darkSheet ? "#eef1f7" : "#1d2a44"}`);
+    if (!hexOk(c.inksoft)) v.push(`--ink-soft:${darkSheet ? "#a9b2c7" : "#5a6684"}`);
+    if (!hexOk(c.line)) v.push(`--line:${mix(c.sheet, darkSheet ? "#ffffff" : "#000000", 0.14)}`);
+    if (!hexOk(c.box)) v.push(`--box:${mix(c.sheet, darkSheet ? "#ffffff" : "#000000", 0.05)}`);
+    v.push(`color-scheme:${darkSheet ? "dark" : "light"}`);
+    if (!bgCfg().color && !ls.get("fondo-foto")) v.push(`--paper:${mix(c.sheet, darkSheet ? "#000000" : "#8090a8", darkSheet ? 0.35 : 0.08)}`);
+  }
+  let css = v.length ? `html:root:root{${v.join(";")}}` : "";
+  // Las letras que van directamente sobre el fondo (título, «Todos los apuntes»…) se leen según el fondo, no según los recuadros.
+  const b = bgCfg();
+  const pageDark = b.color ? (lum(b.color) + lum(b.color2 || b.color)) / 2 < 0.18 : darkSheet;
+  if (pageDark !== null && darkSheet !== null && pageDark !== darkSheet) {
+    const ink = (d) => d ? ["#eef1f7", "#c3cad9"] : ["#1d2a44", "#4a5570"];
+    const [pi, ps] = ink(pageDark), [si, ss] = hexOk(c.ink) ? [c.ink, hexOk(c.inksoft) ? c.inksoft : c.ink] : ink(darkSheet);
+    css += `body{--ink:${pi};--ink-soft:${ps}}.panel,.viewer,.item,label.drop,.banner,.cpsheet,button,select,input,textarea{--ink:${si};--ink-soft:${ss}}`;
+  }
+  return css;
+}
+function contrast(a, b) { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); }
+function partsPrefsHtml() {
+  const c = partColors(), cs = getComputedStyle(document.documentElement), cur = (css) => cs.getPropertyValue("--" + css).trim();
+  const warn = hexOk(cur("ink")) && hexOk(cur("sheet")) && contrast(cur("ink"), cur("sheet")) < 3.5;
+  return `
+    <p class="note">Combinaciones listas</p>
+    <div class="actions">${Object.entries(PALETTES).map(([k, [label, p]]) => `<button class="small palbtn" data-palette="${k}"><span class="pdots">${[p.sheet || "#ffffff", p.box || "#f6f8fb", p.accent || "#2b4fd8", p.ink || "#1d2a44"].map(x => `<i style="background:${x}"></i>`).join("")}</span>${label}</button>`).join("")}</div>
+    <p class="note">O cambia cada parte por separado:</p>
+    <div class="parts">${PARTS.map(([k, label, help, css]) => {
+      const val = c[k] || (k === "video" ? "" : cur(css));
+      return `<div class="part"><button class="cpbtn" data-cpick="c.${k}" aria-label="Cambiar color: ${esc(label)}"><span style="background:${esc(val || "linear-gradient(135deg,#2b4fd8,#8a3fd1,#138a7a,#c2456a)")}"></span></button>
+        <div><b>${esc(label)}</b><span class="note">${esc(help)}${k === "video" && !c.video ? " (ahora: variados)" : ""}</span></div>
+        ${c[k] ? `<button class="small ghost" data-cpreset="${k}" aria-label="Quitar color de ${esc(label)}">↺</button>` : ""}</div>`;
+    }).join("")}</div>
+    ${warn ? `<p class="note errtext">Ojo: con estos colores el texto se lee mal. Toca «Texto» y elige uno más claro u oscuro, o pulsa ↺.</p>` : ""}
+    ${Object.keys(c).length ? `<div class="actions"><button class="small ghost" data-palette="clasica">Volver a los colores normales</button></div>` : ""}`;
 }
 
 // ---------- Ajustes personales: color, tema, letra, voz y estudio ----------
@@ -670,7 +816,7 @@ function applyPrefs() {
   if (!st) { st = document.createElement("style"); st.id = "themevars"; document.head.appendChild(st); }
   st.textContent = `:root{--accent:${la};--accent-soft:${lsoft}}
     @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--accent:${da};--accent-soft:${dsoft}}}
-    :root[data-theme="dark"]{--accent:${da};--accent-soft:${dsoft}}`;
+    :root[data-theme="dark"]{--accent:${da};--accent-soft:${dsoft}}` + partsCss();
   const tema = ls.get("tema") || "auto";
   if (tema === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme = tema;
   const darkBg = applyBg();
@@ -690,8 +836,10 @@ function renderPrefs() {
     <section><h3>Apariencia</h3>
       <p class="note">Color de la app</p>
       <div class="swatches">${Object.entries(COLORS).map(([k, v]) => `<button class="swatch" data-color="${k}" style="--sw:${v[1]}" aria-pressed="${k === col}"><span></span>${v[0]}</button>`).join("")}
-        <label class="btn swatch" aria-pressed="${col === "propio"}" style="--sw:${esc(ls.get("color-propio") || "#ff6b6b")}"><span></span>El que quieras<input type="color" id="accentpick" value="${esc(ls.get("color-propio") || "#ff6b6b")}" class="vh"></label></div>
+        <button class="swatch anycolor" data-cpick="accent" aria-pressed="${col === "propio"}" style="--sw:${esc(col === "propio" ? ls.get("color-propio") : "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)")}"><span></span>El que quieras</button></div>
       <p class="note">Tema</p>${bgCfg().color ? `<p class="note">Con un fondo de color, el tema claro u oscuro se elige solo para que se lea bien.</p>` : `<div class="actions">${chip("tema", "auto", "Como el móvil", "auto")}${chip("tema", "light", "Claro", "auto")}${chip("tema", "dark", "Oscuro", "auto")}</div>`}
+      <h3 style="margin-top:6px">Colores de cada parte</h3>
+      ${partsPrefsHtml()}
       <h3 style="margin-top:6px">Fondo</h3>
       ${bgPrefsHtml()}
       <p class="note">Tamaño de letra</p><div class="actions">${chip("letra", "normal", "Normal", "normal")}${chip("letra", "grande", "Grande", "normal")}${chip("letra", "enorme", "Muy grande", "normal")}</div>
@@ -1130,7 +1278,7 @@ function rdPlay() {
   const run = ++rd.run; clearTimeout(rd.timer); speechSynthesis.cancel();
   rd.playing = true; rdPaint();
   const p = rd.parts[rd.i];
-  const u = utter(p.text);
+  const u = utter(p.text); rd.u = u;
   let done = false;
   const next = () => {
     if (done || run !== rd.run) return; done = true; clearTimeout(rd.timer);
@@ -1209,18 +1357,19 @@ async function renderAudio(n) {
 }
 
 // ---------- Vídeo-lección (escenas animadas + voz del dispositivo) ----------
-const vp = { id: null, i: 0, playing: false, ended: false, timers: [], run: 0 };
-function vClear() { vp.run++; vp.timers.forEach(clearTimeout); vp.timers = []; if (canSpeak) speechSynthesis.cancel(); }
-function vStop() { vClear(); vp.playing = false; }
+const vp = { id: null, i: 0, playing: false, ended: false, waiting: false, mute: false, timers: [], run: 0 };
+function vClear() { vp.u = null; vp.run++; vp.timers.forEach(clearTimeout); vp.timers = []; if (canSpeak) speechSynthesis.cancel(); }
+function vStop() { vClear(); vp.playing = false; vp.waiting = false; }
 const LAYOUTS = ["portada", "lista", "definicion", "comparacion", "dato", "pregunta", "resumen"];
 function renderVideo(n) {
   const c = $("content");
   const b = isBusyWith(n, "video");
   const sc = n.video?.script;
-  if (vp.id !== n.id) { vStop(); vp.id = n.id; vp.i = 0; vp.ended = false; }
+  if (vp.id !== n.id) { vStop(); vp.id = n.id; vp.i = 0; vp.ended = false; vp.waiting = false; vp.mute = false; }
+  const auto = ls.get("video-auto") !== "0";
   c.innerHTML = `<div class="stack">
     <div class="actions"><button class="${sc ? "" : "primary"}" id="govideo" ${busy ? "disabled" : ""}>${sc ? "Hacer otro vídeo" : "Hacer vídeo"}</button>
-      ${sc ? `<span class="note">${esc(sc.title || "")} · ${sc.scenes.length} escenas · unos ${Math.max(1, Math.round(sc.scenes.reduce((k, s) => k + s.narration.split(/\s+/).length, 0) / 150 / speakRate))} min</span>` : ""}</div>
+      ${sc ? `<span class="note">${esc(sc.title || "")} · ${sc.scenes.length} escenas · unos ${Math.max(1, Math.round(sc.scenes.reduce((k, s) => k + String(s.narration || "").split(/\s+/).length, 0) / 150 / speakRate))} min</span>` : ""}</div>
     ${errHtml(n, "video")}
     ${b ? busyHtml("Gemini está escribiendo el guion del vídeo…") : ""}
     ${sc ? `<div class="player" id="player">
@@ -1228,27 +1377,42 @@ function renderVideo(n) {
         <div class="bars" id="vbars"></div>
         <div class="actions vctl"><button id="vprev" aria-label="Escena anterior">‹</button><button class="primary big" id="vplay">Reproducir</button><button id="vnext" aria-label="Escena siguiente">›</button>
           ${rateSelect("vrate")}<button class="small ghost" id="vfull">Pantalla completa</button></div>
-        ${canSpeak ? "" : `<p class="note">Este navegador no tiene voz: el vídeo avanza solo con subtítulos.</p>`}
+        <label class="vauto"><input type="checkbox" id="vauto" ${auto ? "checked" : ""}> Pasar de escena sola al terminar de hablar</label>
+        <p class="note" id="vnovoice" ${canSpeak && !vp.mute ? "hidden" : ""}>Sin voz en este navegador: el vídeo va con subtítulos.</p>
         <div class="subs" id="vsubs" aria-live="polite"></div>
       </div>`
       : (b ? "" : `<p class="note">Pulsa «Hacer vídeo» y Gemini preparará una vídeo-lección con este apunte: escenas animadas con dibujos, comparaciones, preguntas y una voz que te lo explica.</p>${noKeyHint()}`)}
   </div>`;
   if (sc) vDraw(n, false);
 }
+// Si Gemini deja una escena sin su contenido, se rellena con frases de la narración para que nunca salga vacía.
+const shortLine = (t) => { const w = String(t || "").trim().split(/\s+/); return w.length > 12 ? w.slice(0, 12).join(" ") + "…" : w.join(" "); };
 function sceneHtml(s, i, total) {
   const L = LAYOUTS.includes(s.layout) ? s.layout : "lista";
-  const icon = s.icon ? `<span class="vicon">${esc(String(s.icon).slice(0, 4))}</span>` : "";
-  const pts = (arr, cls = "") => (arr || []).filter(Boolean).length ? `<ul class="${cls}">${arr.filter(Boolean).map(p => `<li>${esc(p)}</li>`).join("")}</ul>` : "";
+  const said = sentences(s.narration || "").map(shortLine);
+  const list = (a) => (a || []).map(x => String(x || "").trim()).filter(Boolean);
+  let points = list(s.points); if (!points.length && ["lista", "resumen"].includes(L)) points = said.slice(0, 3);
+  const icon = String(s.icon || "").trim().slice(0, 4) || ["📘", "💡", "🧠", "✏️", "⭐"][i % 5];
+  const pts = (arr, cls = "") => list(arr).length ? `<ul class="${cls}">${list(arr).map((p, k) => `<li style="--d:${k}">${esc(p)}</li>`).join("")}</ul>` : "";
+  const words = (t) => esc(t).split(" ").map((w, k) => `<span class="w" style="--d:${k}">${w}</span>`).join(" ");
+  const heading = s.heading || said[0] || "";
   let body;
-  if (L === "portada") body = `${icon}<h3 class="big"><span>${esc(s.heading)}</span></h3>${s.points?.[0] ? `<p class="lead">${esc(s.points[0])}</p>` : ""}`;
-  else if (L === "definicion") body = `<p class="kick">${icon}${esc(s.heading)}</p><p class="term">${esc(s.term || s.heading)}</p><p class="def">${esc(s.definition || (s.points || []).join(" "))}</p>`;
-  else if (L === "comparacion") body = `<p class="kick">${icon}${esc(s.heading)}</p><div class="cols">
-      <div><b>${esc(s.left_title || "")}</b>${pts(s.left_points)}</div><div><b>${esc(s.right_title || "")}</b>${pts(s.right_points)}</div></div>`;
-  else if (L === "dato") body = `<p class="kick">${icon}${esc(s.heading)}</p><p class="huge">${esc(s.big || s.points?.[0] || "")}</p>${s.big && s.points?.[0] ? `<p class="lead">${esc(s.points[0])}</p>` : ""}`;
-  else if (L === "pregunta") body = `<p class="kick">${icon || '<span class="vicon">❓</span>'}${esc(s.heading || "Pregunta")}</p><p class="qq">${esc(s.question || s.points?.[0] || "")}</p><p class="ans"><span>${esc(s.answer || s.points?.[1] || "")}</span></p>`;
-  else if (L === "resumen") body = `<p class="kick">${icon}${esc(s.heading)}</p>${pts(s.points, "checks")}`;
-  else body = `<p class="kick">${icon}${esc(s.heading)}</p>${pts(s.points)}`;
-  return `<span class="scn">${i + 1} / ${total}</span><div class="scene l-${L} t${i % 5}">${body}</div>`;
+  if (L === "portada") body = `<h3 class="big">${words(heading)}</h3>${points[0] || said[0] ? `<p class="lead rev">${esc(points[0] || said[0])}</p>` : ""}`;
+  else if (L === "definicion") body = `<p class="kick">${esc(heading)}</p><p class="term">${words(s.term || heading)}</p><p class="def rev">${esc(s.definition || points.join(" ") || said[0] || "")}</p>`;
+  else if (L === "comparacion" && (list(s.left_points).length || list(s.right_points).length)) body = `<p class="kick">${esc(heading)}</p><div class="cols">
+      <div class="rev" style="--d:0"><b>${esc(s.left_title || "")}</b>${pts(s.left_points)}</div><div class="rev" style="--d:1"><b>${esc(s.right_title || "")}</b>${pts(s.right_points)}</div></div>`;
+  else if (L === "dato") body = `<p class="kick">${esc(heading)}</p><p class="huge">${esc(s.big || points[0] || "")}</p>${s.big && (points[0] || said[0]) ? `<p class="lead rev">${esc(points[0] || said[0])}</p>` : ""}`;
+  else if (L === "pregunta") body = `<p class="kick">${esc(s.heading || "Piensa")}</p><p class="qq">${esc(s.question || points[0] || said[0] || "")}</p>${s.answer || points[1] ? `<p class="ans"><span>${esc(s.answer || points[1])}</span></p>` : ""}`;
+  else if (L === "resumen") body = `<p class="kick">${esc(heading)}</p>${pts(points, "checks")}`;
+  else body = `<p class="kick">${esc(heading)}</p>${pts(points.length ? points : said.slice(0, 3))}`;
+  const vc = partColors().video;
+  const style = hexOk(vc) ? ` style="--v1:${mix(vc, "#000000", 0.55)};--v2:${vc}"` : "";
+  return `<div class="scene l-${L} ${hexOk(vc) ? "tc" : "t" + (i % 5)}"${style}>
+    <span class="blob b1"></span><span class="blob b2"></span>
+    <span class="scn">${i + 1} / ${total}</span>
+    <span class="vicon" aria-hidden="true">${esc(icon)}</span>
+    <div class="sbody">${body}</div>
+    <span class="sprog"><i></i></span></div>`;
 }
 function vDraw(n, animate) {
   const sc = n.video.script, s = sc.scenes[vp.i];
@@ -1256,43 +1420,91 @@ function vDraw(n, animate) {
   $("vbars").innerHTML = sc.scenes.map((_, k) => `<button class="${k < vp.i ? "done" : k === vp.i ? "now" : ""}" data-vs="${k}" aria-label="Ir a la escena ${k + 1}"></button>`).join("");
   $("vstage").innerHTML = sceneHtml(s, vp.i, sc.scenes.length);
   $("vstage").classList.toggle("anim", !!animate);
-  if (!animate) $("vstage").querySelectorAll("li, .ans, .def, .cols > div").forEach(el => el.classList.add("on"));
-  const words = s.narration.split(/\s+/);
+  $("vstage").classList.toggle("still", !animate);
+  const words = String(s.narration || "").split(/\s+/).filter(Boolean);
   $("vsubs").innerHTML = words.map((w, k) => `<span data-w="${k}">${esc(w)}</span>`).join(" ");
-  $("vplay").textContent = vp.playing ? "Pausa" : (vp.ended ? "Ver otra vez" : "Reproducir");
+  $("vplay").textContent = vp.waiting ? "Siguiente escena ›" : vp.playing ? "Pausa" : (vp.ended ? "Ver otra vez" : "Reproducir");
+  const nv = $("vnovoice"); if (nv) nv.hidden = canSpeak && !vp.mute;
 }
+const markSaid = (k) => document.querySelectorAll("#vsubs span").forEach((el, j) => el.classList.toggle("said", j <= k));
 function vPlayScene(n) {
-  vClear(); rd.run++; rd.playing = false;
+  vClear(); rd.run++; rd.playing = false; vp.waiting = false;
   const sc = n.video.script, s = sc.scenes[vp.i];
+  const narr = String(s.narration || "").trim();
   vDraw(n, true);
-  const est = Math.max(4000, s.narration.split(/\s+/).length * 420 / speakRate);
-  const items = [...document.querySelectorAll("#vstage li, #vstage .def, #vstage .cols > div")];
-  items.forEach((el, k) => vp.timers.push(setTimeout(() => el.classList.add("on"), 500 + k * Math.min(1600, est / (items.length + 1)))));
-  const ans = document.querySelector("#vstage .ans");
+  const run = vp.run, t0 = Date.now();
+  const words = narr.split(/\s+/).filter(Boolean);
+  const est = Math.max(4000, words.length * 400 / speakRate); // lo que tarda en decirse más o menos
+  const stage = $("vstage");
+  stage.style.setProperty("--dur", est + "ms");
+  // Lo que hay en pantalla aparece poco a poco mientras habla, y la respuesta de las preguntas, a mitad.
+  const items = [...stage.querySelectorAll("li, .rev")];
+  items.forEach((el, k) => vp.timers.push(setTimeout(() => el.classList.add("on"), 700 + k * Math.min(1800, est * 0.7 / (items.length + 1)))));
+  const ans = stage.querySelector(".ans");
   if (ans) vp.timers.push(setTimeout(() => ans.classList.add("on"), est * 0.6));
-  let advanced = false;
-  const run = vp.run;
-  const next = () => {
-    if (advanced || run !== vp.run || !vp.playing || vp.id !== n.id) return; advanced = true;
-    document.querySelectorAll("#vstage .ans, #vstage li").forEach(el => el.classList.add("on"));
-    if (vp.i < sc.scenes.length - 1) vp.timers.push(setTimeout(() => { vp.i++; vPlayScene(n); }, 900));
-    else { vp.playing = false; vp.ended = true; vDraw(n, false); }
+  let finished = false;
+  const finish = () => {
+    if (finished || run !== vp.run || !vp.playing) return; finished = true;
+    // Nunca se pasa de escena antes de que dé tiempo a leerla.
+    const wait = Math.max(0, est * 0.85 - (Date.now() - t0));
+    vp.timers.push(setTimeout(() => {
+      if (run !== vp.run || !vp.playing) return;
+      stage.querySelectorAll("li, .rev, .ans").forEach(el => el.classList.add("on")); markSaid(words.length);
+      if (vp.i >= sc.scenes.length - 1) { vp.playing = false; vp.ended = true; vDraw(n, false); return; }
+      if (ls.get("video-auto") === "0") { vp.waiting = true; $("vplay").textContent = "Siguiente escena ›"; return; }
+      vp.timers.push(setTimeout(() => { if (run === vp.run && vp.playing) { vp.i++; vPlayScene(n); } }, 1300));
+    }, wait));
   };
-  if (canSpeak) {
-    const u = utter(s.narration); u.onend = next; u.onerror = next;
-    // Subtítulos tipo karaoke: se marca la palabra que se está diciendo (si el navegador lo permite).
+  // Sin voz: los subtítulos avanzan solos al ritmo de lectura.
+  const silent = (from) => {
+    const left = Math.max(1500, est - (Date.now() - t0));
+    for (let k = from; k < words.length; k++) vp.timers.push(setTimeout(() => run === vp.run && markSaid(k), (k - from) * left / Math.max(1, words.length - from)));
+    vp.timers.push(setTimeout(finish, left));
+  };
+  if (!canSpeak || vp.mute || !words.length) { silent(0); return; }
+  // Se habla frase a frase: así no se corta en Chrome (que para las frases largas) y se puede seguir por dónde va.
+  const parts = []; let off = 0;
+  for (const p of narr.split(/(?<=[.!?…:;])\s+(?=\S)/).map(x => x.trim()).filter(Boolean)) {
+    const nw = p.split(/\s+/).length; parts.push({ text: p, off, nw }); off += nw;
+  }
+  let pi = 0, everStarted = false;
+  const speakPart = () => {
+    if (run !== vp.run || !vp.playing) return;
+    if (pi >= parts.length) { finish(); return; }
+    const p = parts[pi], u = utter(p.text), ts = Date.now();
+    vp.u = u; // si no se guarda, Chrome puede tirarla y no avisa al terminar
+    let done = false, started = false;
     const starts = []; let pos = 0;
-    s.narration.split(/\s+/).forEach(w => { pos = s.narration.indexOf(w, pos); starts.push(pos); pos += w.length; });
+    p.text.split(/\s+/).forEach(w => { pos = p.text.indexOf(w, pos); starts.push(pos); pos += w.length; });
+    markSaid(p.off - 1);
+    const next = (bad) => {
+      if (done || run !== vp.run) return; done = true;
+      // Si la voz falla o «termina» sin decir nada, el vídeo sigue con subtítulos en vez de saltarse escenas.
+      if (bad || (!started && Date.now() - ts < 400 * p.nw / speakRate * 0.3 && p.nw > 3)) {
+        if (!everStarted) { vp.mute = true; const nv = $("vnovoice"); if (nv) nv.hidden = false; }
+        silent(p.off); return;
+      }
+      markSaid(p.off + p.nw - 1); pi++; vp.timers.push(setTimeout(speakPart, 120));
+    };
+    u.onstart = () => { started = everStarted = true; };
+    u.onend = () => next(false);
+    u.onerror = () => { if (run !== vp.run) return; next(!started); };
     u.onboundary = (e) => {
-      if (run !== vp.run || e.name && e.name !== "word") return;
-      let k = starts.findIndex((st, j) => e.charIndex >= st && (j === starts.length - 1 || e.charIndex < starts[j + 1]));
-      document.querySelectorAll("#vsubs span").forEach((el, j) => el.classList.toggle("said", j <= k));
+      started = everStarted = true;
+      if (run !== vp.run || (e.name && e.name !== "word")) return;
+      const k = starts.findIndex((st, j) => e.charIndex >= st && (j === starts.length - 1 || e.charIndex < starts[j + 1]));
+      if (k >= 0) markSaid(p.off + k);
     };
     speechSynthesis.speak(u);
-    vp.timers.push(setTimeout(next, est * 2.2)); // por si el navegador no avisa al terminar
-  } else vp.timers.push(setTimeout(next, est));
+    vp.timers.push(setTimeout(() => next(false), 4000 + p.nw * 700 / speakRate)); // por si el navegador no avisa al terminar
+  };
+  // En Android, hablar justo después de cancelar hace que la frase se pierda: se espera un poco.
+  vp.timers.push(setTimeout(speakPart, 250));
 }
 function vToggle(n) {
+  // Se habla algo dentro del toque para que el iPhone deje usar la voz después.
+  if (canSpeak && !vp.playing) { vp.mute = false; try { speechSynthesis.cancel(); vp.u = new SpeechSynthesisUtterance(" "); vp.u.volume = 0; speechSynthesis.speak(vp.u); } catch (e) {} }
+  if (vp.waiting) { vp.waiting = false; vp.i = Math.min(vp.i + 1, n.video.script.scenes.length - 1); vp.playing = true; vPlayScene(n); return; }
   if (vp.playing) { vStop(); vDraw(n, false); }
   else { if (vp.ended) vp.i = 0; vp.playing = true; vp.ended = false; vPlayScene(n); }
 }
@@ -1603,7 +1815,7 @@ function ensureKey() {
   openSettings(); $("keyinput").focus(); toast("Primero conecta Gemini");
   return false;
 }
-function openSettings() { $("settings").hidden = false; renderPrefs(); renderStorage(); renderSyncStatus(); $("settings").scrollIntoView({ behavior: "smooth", block: "start" }); }
+function openSettings() { $("settings").hidden = false; $("ideas").hidden = true; renderPrefs(); renderStorage(); renderSyncStatus(); $("settings").scrollIntoView({ behavior: "smooth", block: "start" }); }
 // Las fotos se guardan ya giradas, en JPEG y a un tamaño que se lee bien (los HEIC del iPhone no se ven en todos lados).
 async function normalizePhoto(f) {
   try {
@@ -1787,6 +1999,7 @@ async function syncPush(vault) {
   const items = [];
   for (const s of subjects) if (stamp(s) > since) items.push({ kind: "subject", id: s.id, data: s, updated: stamp(s) });
   for (const n of notes) if (stamp(n) > since) { const { blob, ...rest } = n; items.push({ kind: "note", id: n.id, data: rest, updated: stamp(n) }); }
+  for (const x of sugs()) if ((x.updated || x.at) > since) items.push({ kind: "sug", id: x.id, data: x, updated: x.updated || x.at });
   const tombs = readJSON("sync-borrados", []);
   for (const t of tombs) items.push({ kind: t.kind, id: t.id, updated: t.updated, deleted: true });
   const days = readJSON("dias-repaso", []);
@@ -1834,6 +2047,10 @@ async function syncPull(vault) {
         sent.add(r.id); // ya está en la nube: no hace falta volver a subirlo
         const loc = notes.find(n => n.id === r.id);
         if (loc && !loc.blob?.size) { const b = await fetchFile(vault, r.id).catch(() => null); if (b) { loc.blob = b; await put("notes", loc, true); changed.add(r.id); } }
+      } else if (r.kind === "sug") {
+        const a = sugs(), i = a.findIndex(x => x.id === r.id), loc = a[i];
+        if (r.deleted) { if (loc && (loc.updated || loc.at) <= r.updated) { a.splice(i, 1); saveSugs(a); changed.add("sug"); } continue; }
+        if (!loc || (loc.updated || loc.at) < r.updated) { if (loc) a[i] = r.data; else a.push(r.data); saveSugs(a); changed.add("sug"); }
       } else if (r.kind === "meta" && r.id === "dias-repaso" && Array.isArray(r.data)) {
         const mine = readJSON("dias-repaso", []);
         const merged = [...new Set([...mine, ...r.data])].sort((a, b) => new Date(a) - new Date(b)).slice(-400);
@@ -1857,6 +2074,7 @@ async function syncNow(manual) {
     const changed = await syncPull(cfg.vault);
     await syncPush(cfg.vault);
     ls.set("sync-ultima", String(Date.now())); sync.error = "";
+    if (changed.has("sug")) { renderSugBadge(); if (!$("ideas").hidden && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName || "")) renderSugs(); if (sugUnseen()) toast("Hay novedades en el buzón de sugerencias"); changed.delete("sug"); }
     if (changed.size) {
       subjects.sort((a, b) => a.created - b.created); renderToday();
       if (!notes.some(n => n.id === openId)) { openId = null; if (mode === "note") changed.add(openId); }
@@ -1958,13 +2176,70 @@ async function copyKeyLink() {
   }
 }
 
+// ---------- Buzón de sugerencias: Erika deja opiniones e ideas y le llegan a Angel ----------
+const SUG_TYPES = { bien: "👍 Me gusta", mal: "👎 No me gusta", idea: "💡 Idea", fallo: "🐞 Algo falla" };
+const SUG_AREAS = ["General", "Aspecto y colores", "Resúmenes", "Audio", "Tests", "Tarjetas", "Mapas y esquemas", "Vídeos", "Preguntar", "Repasar y examen", "Subir apuntes", "Sincronizar"];
+const VIEW_AREA = { resumen: "Resúmenes", audio: "Audio", quiz: "Tests", tarjetas: "Tarjetas", mapa: "Mapas y esquemas", video: "Vídeos", preguntar: "Preguntar" };
+const sugs = () => readJSON("sugerencias", []);
+const saveSugs = (a) => ls.set("sugerencias", JSON.stringify(a));
+let sugType = "idea", sugArea = null, sugReplying = null;
+const sugUnseen = () => { const seen = new Set(readJSON("sug-vistas", [])); return sugs().filter(x => !seen.has(x.id + ":" + (x.updated || x.at))).length; };
+function markSugsSeen() { ls.set("sug-vistas", JSON.stringify(sugs().map(x => x.id + ":" + (x.updated || x.at)))); renderSugBadge(); }
+function renderSugBadge() { const b = $("sugcount"); if (!b) return; const k = sugUnseen(); b.textContent = k; b.hidden = !k; }
+const sugText = (x) => `${SUG_TYPES[x.type] || "💬"} · ${x.area}\n${x.text}${x.reply ? `\nRespuesta: ${x.reply}` : ""}`;
+function renderSugs() {
+  const box = $("sugbox"); if (!box) return;
+  const draft = $("sugtext")?.value || "", reply = $("sugreplytext")?.value;
+  if ($("sugarea") && sugArea) sugArea = $("sugarea").value;
+  const list = sugs().sort((a, b) => b.at - a.at);
+  if (!sugArea) sugArea = mode === "note" && openId && VIEW_AREA[view] ? VIEW_AREA[view] : "General";
+  box.innerHTML = `
+    <p class="note">Escribe lo que te gusta, lo que no, lo que cambiarías o lo que falla. Se le manda a Angel para mejorar la app.</p>
+    <form id="sugform" class="stack">
+      <div class="actions">${Object.entries(SUG_TYPES).map(([k, v]) => `<button type="button" class="tab small" data-sugtype="${k}" aria-pressed="${sugType === k}">${v}</button>`).join("")}</div>
+      <label class="note" for="sugarea">¿Sobre qué?</label>
+      <select id="sugarea">${SUG_AREAS.map(a => `<option ${a === sugArea ? "selected" : ""}>${esc(a)}</option>`).join("")}</select>
+      <textarea id="sugtext" rows="3" placeholder="${sugType === "fallo" ? "¿Qué estabas haciendo y qué pasó?" : sugType === "mal" ? "¿Qué no te gusta y cómo te gustaría que fuera?" : sugType === "bien" ? "¿Qué te ha gustado?" : "Cuéntame tu idea…"}" aria-label="Tu sugerencia"></textarea>
+      <div class="actions"><button class="primary" type="submit">Enviar</button></div>
+    </form>
+    <p class="note">${syncOn() ? "Le llega sola a Angel por la sincronización." : "Esta app no tiene la sincronización puesta: al enviarla, pulsa «Mandar por WhatsApp» para que le llegue."}</p>
+    ${list.length ? `<div class="sugs">${list.map(x => `<article class="sug ${x.done ? "done" : ""}">
+        <div class="row" style="justify-content:space-between"><b>${SUG_TYPES[x.type] || "💬"}</b><span class="note">${esc(x.area)} · ${fmtDate(x.at)}</span></div>
+        <p>${esc(x.text)}</p>
+        ${x.reply ? `<p class="sugreply"><b>Respuesta:</b> ${esc(x.reply)}</p>` : ""}
+        ${sugReplying === x.id ? `<form class="row" id="sugreplyform" data-id="${esc(x.id)}"><input type="text" id="sugreplytext" value="${esc(x.reply || "")}" placeholder="Escribe la respuesta" aria-label="Respuesta"><button class="small primary" type="submit">Guardar</button></form>` : ""}
+        <div class="actions">
+          <span class="chip ${x.done ? "ok" : ""}">${x.done ? "Hecho ✓" : "Pendiente"}</span>
+          <button class="small ghost" data-sugdone="${esc(x.id)}">${x.done ? "Volver a pendiente" : "Marcar hecho"}</button>
+          <button class="small ghost" data-sugreply="${esc(x.id)}">Responder</button>
+          <button class="small ghost" data-sugwa="${esc(x.id)}">Mandar por WhatsApp</button>
+          <button class="small ghost" data-sugdel="${esc(x.id)}" aria-label="Borrar sugerencia">Borrar</button>
+        </div></article>`).join("")}</div>
+      <div class="actions"><button class="small" id="sugcopy">Copiar todas</button></div>` : ""}`;
+  $("sugtext").value = draft;
+  if (reply !== undefined && $("sugreplytext")) $("sugreplytext").value = reply;
+}
+function sugUpdate(id, patch) {
+  const a = sugs(), x = a.find(s => s.id === id); if (!x) return;
+  Object.assign(x, patch, { updated: Date.now() }); saveSugs(a); syncSoon(); renderSugs(); markSugsSeen();
+}
+function sugWhatsApp(x) { window.open("https://wa.me/?text=" + encodeURIComponent("Sugerencia para la app de apuntes:\n" + sugText(x)), "_blank", "noopener"); }
+function openSugs() { $("ideas").hidden = false; $("settings").hidden = true; sugArea = null; sugReplying = null; renderSugs(); markSugsSeen(); $("ideas").scrollIntoView({ behavior: "smooth", block: "start" }); }
+
 // ---------- Eventos ----------
 document.addEventListener("click", async (e) => {
   if (swallowClick) { swallowClick = false; if (e.target.closest("#flipcard")) return; }
   const si = e.target.closest("[data-si]"); if (si) { rdJump(+si.dataset.si); if (!rd.playing) rdPlay(); return; }
   const stage = e.target.closest("#vstage"); if (stage) { const nn = notes.find(x => x.id === openId); if (nn?.video) vToggle(nn); return; }
+  if (e.target.id === "cpick") { if (cpDownOnBackdrop) closeColorPicker(); return; }
   const t = e.target.closest("button"); if (!t) return;
   const n = notes.find(x => x.id === openId);
+  if (t.dataset.cpick) { openColorPicker(t.dataset.cpick); return; }
+  if (t.dataset.cpv) { cpSet(t.dataset.cpv); return; }
+  if (t.id === "cpok") { closeColorPicker(); return; }
+  if (t.id === "cpreset") { cpickTarget(cpick.key)?.reset(); closeColorPicker(); return; }
+  if (t.dataset.cpreset) { setPartColor(t.dataset.cpreset, null); renderPrefs(); return; }
+  if (t.dataset.palette) { applyPalette(t.dataset.palette); return; }
   // ajustes personales
   if (t.dataset.bgpreset) {
     const p = BG_PRESETS[t.dataset.bgpreset]; const keep = bgCfg();
@@ -2007,6 +2282,14 @@ document.addEventListener("click", async (e) => {
   if (t.id === "voicetest") { sayOnce("Hola Erika, así sonarán tus resúmenes y tus vídeos."); return; }
   // cabecera y ajustes
   if (t.id === "reviewbtn") { startReview(notes, "Repaso de hoy"); return; }
+  if (t.id === "sugbtn") { if ($("ideas").hidden) openSugs(); else $("ideas").hidden = true; return; }
+  if (t.id === "ideasclose") { $("ideas").hidden = true; return; }
+  if (t.dataset.sugtype) { sugType = t.dataset.sugtype; renderSugs(); return; }
+  if (t.dataset.sugdone) { const x = sugs().find(s => s.id === t.dataset.sugdone); sugUpdate(t.dataset.sugdone, { done: !x?.done }); return; }
+  if (t.dataset.sugreply) { sugReplying = sugReplying === t.dataset.sugreply ? null : t.dataset.sugreply; renderSugs(); $("sugreplytext")?.focus(); return; }
+  if (t.dataset.sugwa) { const x = sugs().find(s => s.id === t.dataset.sugwa); if (x) sugWhatsApp(x); return; }
+  if (t.dataset.sugdel) { if (!confirm("¿Borrar esta sugerencia?")) return; saveSugs(sugs().filter(s => s.id !== t.dataset.sugdel)); tomb("sug", t.dataset.sugdel); renderSugs(); renderSugBadge(); return; }
+  if (t.id === "sugcopy") { const txt = sugs().sort((a, b) => a.at - b.at).map(x => `${fmtDate(x.at)} · ${sugText(x)}${x.done ? " (hecho)" : ""}`).join("\n\n"); navigator.clipboard?.writeText(txt).then(() => toast("Copiadas. Pégalas donde quieras."), () => toast("No se pudo copiar.")); return; }
   if (t.id === "settingsbtn") { if ($("settings").hidden) openSettings(); else $("settings").hidden = true; return; }
   if (t.id === "settingsclose") { $("settings").hidden = true; return; }
   if (t.id === "welcomeok") { ls.set("bienvenida-vista", "1"); renderTop(); if (!ls.get("gemini-key")) openSettings(); return; }
@@ -2128,29 +2411,37 @@ document.addEventListener("click", async (e) => {
 });
 document.addEventListener("input", (e) => {
   const id = e.target.id, v = e.target.value;
-  if (id === "bgcolor") setBg({ color: v });
-  else if (id === "bgcolor2") setBg({ color2: v, color: bgCfg().color || "#f6f8fb" });
-  else if (id === "bgpatcolor") setBg({ patColor: v });
+  if (id === "cph" || id === "cps" || id === "cpl") { cpick.hsl[{ cph: 0, cps: 1, cpl: 2 }[id]] = +v; cpSet(hslToHex(...cpick.hsl), true); }
+  else if (id === "cphex") { const h = (v.startsWith("#") ? v : "#" + v).toLowerCase(); if (hexOk(h)) cpSet(h); }
   else if (id === "bgopacity") setBg({ opacity: +v });
   else if (id === "bgsize") setBg({ size: +v });
   else if (id === "bgveil") setBg({ veil: +v });
   else if (id === "bgblur") setBg({ blur: +v });
   else if (id === "bgangle") setBg({ angle: +v });
-  else if (id === "accentpick") { ls.set("color", "propio"); ls.set("color-propio", v); applyPrefs(); }
 });
 document.addEventListener("toggle", (e) => { if (e.target.classList?.contains("bgcustom")) ls.set("fondo-abierto", e.target.open ? "1" : "0"); }, true);
 document.addEventListener("change", (e) => {
-  if (["bgcolor", "bgcolor2", "bgpatcolor", "accentpick"].includes(e.target.id)) renderPrefs();
   if (e.target.id === "bgphoto" && e.target.files[0]) { setBgPhoto(e.target.files[0]); e.target.value = ""; }
   const n = notes.find(x => x.id === openId);
   if (e.target.id === "rate") { setRate(+e.target.value); if (rd.playing) rdPlay(); }
-  if (e.target.id === "vrate") { setRate(+e.target.value); if (vp.playing && n?.video) vPlayScene(n); }
+  if (e.target.id === "vauto") { ls.set("video-auto", e.target.checked ? "1" : "0"); return; }
+  if (e.target.id === "vrate") { setRate(+e.target.value); if (vp.playing && !vp.waiting && n?.video) vPlayScene(n); }
   if (e.target.id === "prefrate") setRate(+e.target.value);
   if (e.target.id === "voicesel") { ls.set("voz", e.target.value); pickVoice(); sayOnce("Así suena esta voz."); }
   if (e.target.id === "restorefile" && e.target.files[0]) { readBackup(e.target.files[0]); e.target.value = ""; }
 });
 document.addEventListener("submit", async (e) => {
   const id = e.target.id;
+  if (id === "sugform") {
+    e.preventDefault();
+    const text = $("sugtext").value.trim(); if (!text) { toast("Escribe algo antes de enviar."); return; }
+    const x = { id: uid(), type: sugType, area: $("sugarea").value, text, at: Date.now(), updated: Date.now(), done: false };
+    saveSugs([...sugs(), x]); markSugsSeen(); syncSoon();
+    sugArea = x.area; $("sugtext").value = ""; renderSugs();
+    toast(syncOn() ? "¡Gracias! Le llegará a Angel." : "Guardada. Pulsa «Mandar por WhatsApp» para que le llegue.");
+    return;
+  }
+  if (id === "sugreplyform") { e.preventDefault(); const rid = e.target.dataset.id; sugReplying = null; sugUpdate(rid, { reply: $("sugreplytext").value.trim() }); return; }
   if (["renameform", "editform", "askform", "keyform", "newsubj", "cardeditform", "cardaddform", "syncform", "examdateform"].includes(id) || e.target.classList.contains("openform")) e.preventDefault(); else return;
   const n = notes.find(x => x.id === openId);
   if (id === "keyform") {
@@ -2194,6 +2485,7 @@ document.addEventListener("submit", async (e) => {
   }
 });
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("cpick") && !$("cpick").hidden) { closeColorPicker(); return; }
   if (e.key === "Escape" && $("lightbox") && !$("lightbox").hidden) { closePhoto(); return; }
   if (e.key === "Escape" && $("player")?.classList.contains("theater")) { vFullscreen(); return; }
   if (e.target.id === "askinput" && e.key === "Enter" && !e.shiftKey && !isPhone()) { e.preventDefault(); $("askform").requestSubmit(); }

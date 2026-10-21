@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2026-10-21a";
+const APP_VERSION = "2026-10-21b";
 
 // ---------- Almacenamiento (IndexedDB, con memoria como respaldo) ----------
 const mem = { subjects: [], notes: [] };
@@ -449,15 +449,26 @@ const EXAMPLE_MAP = {
   ]
 };
 const EXAMPLE_VIDEO = {
+  v: 2,
   title: "La célula en dos minutos",
   scenes: [
-    { layout: "portada", icon: "🔬", heading: "La célula", points: ["La pieza de la que está hecho todo ser vivo"], narration: "Hoy repasamos la célula. Es la pieza más pequeña de la que está hecho cualquier ser vivo, desde una bacteria hasta tú." },
-    { layout: "definicion", icon: "🧱", heading: "Qué es", term: "Célula", definition: "La unidad básica de la vida.", narration: "Una célula es la unidad básica de la vida. Igual que una casa está hecha de ladrillos, tu cuerpo está hecho de células." },
-    { layout: "comparacion", icon: "⚖️", heading: "Dos tipos de célula", left_title: "Procariota", left_points: ["Sin núcleo definido", "Ej.: bacterias"], right_title: "Eucariota", right_points: ["Con núcleo", "Ej.: animales y plantas"], narration: "Hay dos grandes tipos. Las procariotas no tienen núcleo definido, como las bacterias. Las eucariotas sí lo tienen, como las de animales y plantas." },
-    { layout: "dato", icon: "⚡", heading: "La central de energía", big: "ATP", points: ["La energía que fabrica la mitocondria"], narration: "La mitocondria es como la central eléctrica de la célula. Fabrica ATP, que es la energía que la célula usa para todo." },
-    { layout: "pregunta", icon: "❓", heading: "Piensa", question: "¿Dónde se hace la fotosíntesis?", answer: "En el cloroplasto, solo en plantas", narration: "Una pregunta. ¿Dónde se hace la fotosíntesis? Piénsalo un momento. Exacto: en el cloroplasto, que solo tienen las células vegetales." },
-    { layout: "lista", icon: "🏭", heading: "Fábrica y cerebro", points: ["Ribosoma: fabrica proteínas", "Núcleo: guarda el ADN"], narration: "Los ribosomas fabrican proteínas. Y el núcleo guarda el ADN y dirige todo lo que hace la célula." },
-    { layout: "resumen", icon: "✅", heading: "Lo que no puedes olvidar", points: ["Procariota sin núcleo, eucariota con núcleo", "Mitocondria igual a energía", "Cloroplasto solo en vegetales"], narration: "Para el examen: procariota sin núcleo y eucariota con núcleo, la mitocondria da energía, y el cloroplasto solo está en las plantas." }
+    { anim: "portada", emoji: "🔬", title: "La célula", items: [{ emoji: "🧱", label: "Qué es", cue: "pieza" }, { emoji: "⚖️", label: "Sus tipos", cue: "tipos" }, { emoji: "⚙️", label: "Sus órganos", cue: "órganos" }],
+      narration: "Hoy repasamos la célula, la pieza más pequeña de la que está hecho cualquier ser vivo. Veremos sus tipos y los pequeños órganos que tiene dentro." },
+    { anim: "definicion", emoji: "🧱", title: "Célula", items: [{ emoji: "🧬", label: "Unidad básica de la vida", cue: "unidad" }, { emoji: "🏠", label: "Como los ladrillos", cue: "ladrillos" }, { emoji: "🧍", label: "Forman tu cuerpo", cue: "cuerpo" }],
+      narration: "Una célula es la unidad básica de la vida. Igual que una casa está hecha de ladrillos, tu cuerpo está hecho de células." },
+    { anim: "comparar", emoji: "⚖️", title: "Dos tipos de célula", left_title: "Procariota", right_title: "Eucariota",
+      items: [{ emoji: "🚫", label: "Sin núcleo", side: "izquierda", cue: "procariotas" }, { emoji: "🦠", label: "Bacterias", side: "izquierda", cue: "bacterias" }, { emoji: "🟣", label: "Con núcleo", side: "derecha", cue: "eucariotas" }, { emoji: "🐶", label: "Animales y plantas", side: "derecha", cue: "animales" }],
+      narration: "Hay dos grandes tipos. Las procariotas no tienen núcleo definido, como las bacterias. Las eucariotas sí lo tienen, como las de animales y plantas." },
+    { anim: "partes", emoji: "🧫", title: "Dentro de la célula", items: [{ emoji: "🧠", label: "Núcleo", text: "Guarda el ADN", cue: "núcleo" }, { emoji: "⚡", label: "Mitocondria", text: "Da energía", cue: "mitocondria" }, { emoji: "🏭", label: "Ribosoma", text: "Fabrica proteínas", cue: "ribosomas" }, { emoji: "🌿", label: "Cloroplasto", text: "Fotosíntesis", cue: "cloroplasto" }],
+      narration: "Dentro de la célula hay pequeños órganos. El núcleo guarda el ADN y lo dirige todo. La mitocondria da energía. Los ribosomas fabrican proteínas. Y el cloroplasto, solo en las plantas, hace la fotosíntesis." },
+    { anim: "escena", emoji: "🌱", title: "La fotosíntesis en acción", items: [{ emoji: "☀️", label: "Luz del sol", action: "brilla", to: 2, cue: "sol" }, { emoji: "💧", label: "Agua", action: "sube", to: 2, cue: "agua" }, { emoji: "🌱", label: "Planta", action: "crece", to: 4, cue: "planta" }, { emoji: "🍬", label: "Azúcar", action: "late", cue: "azúcar" }, { emoji: "🫧", label: "Oxígeno", action: "sube", cue: "oxígeno" }],
+      narration: "Mira la fotosíntesis en acción. La luz del sol y el agua llegan a la planta. En el cloroplasto, la planta fabrica azúcar para alimentarse y suelta oxígeno al aire." },
+    { anim: "proceso", emoji: "⚡", title: "Cómo consigues energía", items: [{ emoji: "🍎", label: "Glucosa", text: "De lo que comes", cue: "glucosa" }, { emoji: "⚡", label: "Mitocondria", cue: "mitocondria" }, { emoji: "🔋", label: "ATP", text: "La pila de la célula", cue: "ATP" }, { emoji: "🏃", label: "Energía para vivir", cue: "moverte" }],
+      narration: "Y así consigues energía. La glucosa de lo que comes llega a la mitocondria, que la convierte en ATP, la pila de la célula. Con esa energía puedes moverte, pensar y vivir." },
+    { anim: "pregunta", emoji: "🤔", title: "Piensa", question: "¿Dónde se hace la fotosíntesis?", answer: "En el cloroplasto",
+      narration: "Una pregunta. ¿Dónde se hace la fotosíntesis? Piénsalo un momento. Exacto: en el cloroplasto, que solo tienen las células vegetales." },
+    { anim: "resumen", emoji: "✅", title: "Lo que no puedes olvidar", items: [{ emoji: "🦠", label: "Procariota sin núcleo", cue: "procariota" }, { emoji: "⚡", label: "Mitocondria: energía", cue: "mitocondria" }, { emoji: "🌿", label: "Cloroplasto: solo plantas", cue: "cloroplasto" }],
+      narration: "Para el examen: procariota sin núcleo y eucariota con núcleo, la mitocondria da energía, y el cloroplasto solo está en las plantas." }
   ]
 };
 const EXAMPLE_PODCAST = "Hola, Erika. Hoy vamos a hablar de la célula, que es la unidad básica de la vida. Piensa en un edificio: está hecho de ladrillos. Pues todos los seres vivos están hechos de células, ya sea una sola, como una bacteria, o millones, como tú. Hay dos tipos. Las procariotas no tienen un núcleo definido; las bacterias son el ejemplo típico. Las eucariotas sí tienen núcleo, rodeado de una membrana, y son las de animales y plantas. Dentro de la célula hay pequeños órganos con trabajos distintos. La mitocondria es la central de energía: fabrica ATP mediante la respiración celular. El cloroplasto hace la fotosíntesis, pero solo está en las células vegetales. Los ribosomas fabrican proteínas. Y el núcleo guarda el ADN y dirige todo. Repasemos lo clave: procariota sin núcleo y eucariota con núcleo; la mitocondria da energía; y el cloroplasto solo aparece en las plantas. Y una pregunta para pensar: ¿por qué crees que nuestras células no necesitan cloroplastos?";
@@ -472,7 +483,7 @@ async function upgradeExample() {
   if (!n.summary) { n.summary = { mode: "corto", text: EXAMPLE_SUMMARY, at: Date.now() }; changed = true; }
   if (!n.quiz) { n.quiz = { questions: EXAMPLE_QUIZ, at: Date.now() }; changed = true; }
   if (!n.map) { n.map = { tree: EXAMPLE_MAP, at: Date.now() }; changed = true; }
-  if (!n.video || !n.video.script.scenes[0].layout) { n.video = { script: EXAMPLE_VIDEO, at: Date.now() }; changed = true; }
+  if (!n.video || !n.video.script.scenes[0].anim) { n.video = { script: EXAMPLE_VIDEO, at: Date.now() }; changed = true; }
   if (!n.podcast) { n.podcast = { text: EXAMPLE_PODCAST, at: Date.now() }; changed = true; }
   if (!n.cards) { n.cards = EXAMPLE_CARDS.map(([f, b]) => newCard(f, b)); changed = true; }
   if (/\.txt$/.test(n.name)) { n.name = baseName(n.name); changed = true; }
@@ -1361,6 +1372,154 @@ const vp = { id: null, i: 0, playing: false, ended: false, waiting: false, mute:
 function vClear() { vp.u = null; vp.run++; vp.timers.forEach(clearTimeout); vp.timers = []; if (canSpeak) speechSynthesis.cancel(); }
 function vStop() { vClear(); vp.playing = false; vp.waiting = false; }
 const LAYOUTS = ["portada", "lista", "definicion", "comparacion", "dato", "pregunta", "resumen"];
+// ---------- Vídeo animado: cada escena dibuja y anima lo que la voz va explicando ----------
+// Gemini elige el tipo de animación de cada escena y, para cada dibujo, la palabra de la narración
+// en la que debe aparecer («cue»). Al llegar la voz a esa palabra, el dibujo entra en escena.
+const ANIMS = ["portada", "proceso", "ciclo", "partes", "comparar", "linea", "jerarquia", "grafico", "causa", "escena", "definicion", "pregunta", "resumen"];
+const ACTIONS = ["aparece", "entra", "crece", "late", "gira", "sube", "baja", "brilla", "tiembla"];
+const VIDEO2_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    title: { type: "STRING" },
+    scenes: { type: "ARRAY", items: { type: "OBJECT", properties: {
+      anim: { type: "STRING", enum: ANIMS }, title: { type: "STRING" }, emoji: { type: "STRING" },
+      items: { type: "ARRAY", items: { type: "OBJECT", properties: {
+        emoji: { type: "STRING" }, label: { type: "STRING" }, text: { type: "STRING" }, value: { type: "NUMBER" },
+        side: { type: "STRING", enum: ["izquierda", "derecha"] }, action: { type: "STRING", enum: ACTIONS },
+        to: { type: "INTEGER" }, cue: { type: "STRING" }
+      }, required: ["label", "cue"] } },
+      left_title: { type: "STRING" }, right_title: { type: "STRING" },
+      question: { type: "STRING" }, answer: { type: "STRING" }, narration: { type: "STRING" }
+    }, required: ["anim", "title", "narration"] } }
+  },
+  required: ["title", "scenes"]
+};
+const VIDEO2_PROMPT = `Escribe el guion de un VÍDEO ANIMADO para repasar estos apuntes, de 6 a 9 escenas. En cada escena una voz explica algo y en pantalla se ANIMA justo eso: dibujos (emojis) que aparecen, se mueven y se conectan con flechas a la vez que la voz los nombra.
+Cada escena tiene "anim" (el tipo de animación), "title" (máx. 6 palabras), "emoji" (uno que represente la escena), "items" (los dibujos) y "narration".
+Tipos de "anim" y qué poner en "items":
+- "portada": la primera. 2 a 4 items con los temas que se verán.
+- "proceso": pasos en orden (3 a 5) que se unen con flechas. Ideal para procedimientos, fases o cómo funciona algo.
+- "ciclo": etapas que se repiten en círculo (3 a 6), como el ciclo del agua.
+- "partes": el "emoji" de la escena es el objeto y los items son sus partes (3 a 6), cada una unida al centro.
+- "jerarquia": el título es lo general y los items los tipos o subgrupos (2 a 5).
+- "comparar": "left_title" y "right_title" son lo que se compara; cada item lleva "side" ("izquierda" o "derecha") y es una característica (2 o 3 por lado).
+- "linea": línea del tiempo; "label" es la fecha o época y "text" lo que pasó (3 a 5).
+- "grafico": barras; cada item lleva "value" (un número de los apuntes) y "label". Solo si hay cifras reales.
+- "causa": cadena causa → consecuencia (3 o 4 eslabones).
+- "escena": una pequeña escena con personajes u objetos (2 a 5) que actúan: "action" es lo que hace cada uno (aparece, entra, crece, late, gira, sube, baja, brilla, tiembla) y "to" (opcional) es el número del item, empezando en 0, hacia el que va una flecha con algo que viaja (energía, agua, información…). Ejemplo, fotosíntesis: ☀️ brilla to 1, 🌱 crece, 💧 sube to 1, 🫧 O₂ sube.
+- "definicion": "title" es el concepto y los items 2 o 3 rasgos clave (emoji + label corto).
+- "pregunta": "question" para que Erika piense y "answer" corta; items puede ir vacío.
+- "resumen": la última. 3 items con lo que no puede olvidar.
+Usa al menos 5 tipos distintos y prefiere los más visuales (proceso, ciclo, partes, escena, comparar, linea). Elige el tipo que mejor dibuje lo que se explica.
+Cada item: "emoji" (UN emoji concreto que dibuje la cosa), "label" (máx. 4 palabras), "text" opcional (máx. 8 palabras) y "cue": UNA palabra que aparezca TAL CUAL en la narración, en el momento en que se habla de ese item. Los items van en el mismo orden en que se nombran.
+"narration": lo que dice el profesor en voz alta, 2 a 4 frases naturales y cercanas, como si se lo explicaras a una amiga, nombrando los items en orden. En las preguntas plantea la pregunta, di «piénsalo un momento» y luego da la respuesta. Sin emojis, símbolos ni Markdown en la narración. No inventes datos que no estén en los apuntes.`;
+
+const emo = (x) => esc(Array.from(String(x || "").trim()).slice(0, 3).join(""));
+const normW = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9ñ\s]/g, " ").split(/\s+/).filter(Boolean);
+// Palabra de la narración en la que aparece un dibujo (o -1 si no se encuentra).
+function findCue(nwords, cue, from) {
+  const c = normW(cue); if (!c.length) return -1;
+  const at = (s) => { for (let i = s; i < nwords.length; i++) if (c.every((w, j) => (nwords[i + j] || "").startsWith(w.slice(0, Math.max(4, w.length - 2))))) return i; return -1; };
+  const i = at(from); return i >= 0 ? i : at(0);
+}
+function sceneHtml2(s, i, total) {
+  const A = ANIMS.includes(s.anim) ? s.anim : "proceso";
+  let items = (s.items || []).filter(x => x && (x.label || x.emoji)).slice(0, 7);
+  const words = (t) => esc(t).split(" ").map((w, k) => `<span class="w" style="--d:${k}">${w}</span>`).join(" ");
+  const it = (x, k, cls = "", style = "") => `<div class="it ${cls}" data-k="${k}" data-cue="${esc(x.cue || x.label)}"${style ? ` style="${style}"` : ""}>
+      ${x.emoji ? `<span class="ie act-${ACTIONS.includes(x.action) ? x.action : "aparece"}">${emo(x.emoji)}</span>` : ""}<span class="il">${esc(x.label || "")}</span>${x.text ? `<span class="it2">${esc(x.text)}</span>` : ""}</div>`;
+  const pos = (x, y) => `left:${x.toFixed(1)}%;top:${y.toFixed(1)}%`;
+  const core = (label) => `<div class="core" data-k="c"><span class="ie big act-late">${emo(s.emoji || "⭐")}</span>${label ? `<span class="il">${esc(label)}</span>` : ""}</div>`;
+  let body = "", wires = [];
+  const n = items.length;
+  if (A === "portada") body = `<div class="hero"><span class="ie hugee act-crece">${emo(s.emoji || "📘")}</span><h3 class="big">${words(s.title)}</h3></div><div class="chips">${items.map((x, k) => it(x, k, "chipit")).join("")}</div>`;
+  else if (A === "proceso" || A === "causa") { body = `<div class="flow ${A === "causa" ? "vert" : ""}">${items.map((x, k) => it(x, k, "step")).join("")}</div>`; wires = items.slice(1).map((_, k) => [k, k + 1]); }
+  else if (A === "ciclo") { body = `<div class="ring">${core("")}<span class="orbitline"></span>${items.map((x, k) => { const a = -Math.PI / 2 + 2 * Math.PI * k / n; return it(x, k, "abs", pos(50 + 38 * Math.cos(a), 50 + 38 * Math.sin(a))); }).join("")}</div>`; wires = items.map((_, k) => [k, (k + 1) % n]); }
+  else if (A === "partes") { body = `<div class="ring">${core("")}${items.map((x, k) => { const a = -Math.PI / 2 + Math.PI / n + 2 * Math.PI * k / n; return it(x, k, "abs", pos(50 + 39 * Math.cos(a), 50 + 37 * Math.sin(a))); }).join("")}</div>`; wires = items.map((_, k) => ["c", k]); }
+  else if (A === "jerarquia") { body = `<div class="tree"><div class="rootw">${core(s.title)}</div><div class="kids">${items.map((x, k) => it(x, k, "kid")).join("")}</div></div>`; wires = items.map((_, k) => ["c", k]); }
+  else if (A === "escena") {
+    body = `<div class="ring">${items.map((x, k) => it(x, k, "abs actor", pos(12 + 76 * (k + 0.5) / n, n <= 3 ? 50 : (k % 2 ? 66 : 32)))).join("")}</div>`;
+    wires = items.map((x, k) => Number.isInteger(x.to) && x.to !== k && x.to >= 0 && x.to < n ? [k, x.to, "flow"] : null).filter(Boolean);
+  } else if (A === "comparar") {
+    const L = items.filter(x => x.side !== "derecha"), R = items.filter(x => x.side === "derecha");
+    const col = (arr, t, cls) => `<div class="cmpcol ${cls}"><b>${esc(t || "")}</b>${arr.map(x => it(x, items.indexOf(x), "cmpit")).join("")}</div>`;
+    body = `<div class="cmp">${col(L, s.left_title, "l")}<span class="vs">VS</span>${col(R, s.right_title, "r")}</div>`;
+  } else if (A === "linea") body = `<div class="tl"><div class="tlline"><i></i></div>${items.map((x, k) => it(x, k, "abs tlp " + (k % 2 ? "dn" : "up"), `left:${(13 + 74 * (n === 1 ? 0.5 : k / (n - 1))).toFixed(1)}%;top:50%`)).join("")}</div>`;
+  else if (A === "grafico") {
+    const max = Math.max(...items.map(x => Math.abs(+x.value || 0)), 1);
+    body = `<div class="bars2">${items.map((x, k) => `<div class="it bar" data-k="${k}" data-cue="${esc(x.cue || x.label)}" data-v="${+x.value || 0}" style="--v:${Math.max(4, 100 * Math.abs(+x.value || 0) / max).toFixed(1)}">
+      <span class="bv">${esc(String(+x.value || 0).replace(".", ","))}</span><i></i>${x.emoji ? `<span class="ie">${emo(x.emoji)}</span>` : ""}<span class="il">${esc(x.label || "")}</span></div>`).join("")}</div>`;
+  } else if (A === "definicion") body = `<div class="defn"><span class="ie hugee act-crece">${emo(s.emoji || "📖")}</span><div><p class="term">${words(s.title)}</p><div class="chips">${items.map((x, k) => it(x, k, "chipit")).join("")}</div></div></div>`;
+  else if (A === "pregunta") body = `<div class="quest"><span class="ie hugee act-tiembla">${emo(s.emoji || "🤔")}</span><p class="qq">${esc(s.question || s.title)}</p>
+      <svg class="clock" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16"/><circle class="hand" cx="20" cy="20" r="16"/></svg>
+      ${s.answer ? `<p class="ans it" data-k="a" data-cue="${esc(s.answer)}"><span>${esc(s.answer)}</span></p>` : ""}</div>`;
+  else body = `<div class="checks2">${items.map((x, k) => it(x, k, "chk")).join("")}</div>`;
+  const vc = partColors().video;
+  const style = hexOk(vc) ? ` style="--v1:${mix(vc, "#000000", 0.55)};--v2:${vc}"` : "";
+  return { wires, html: `<div class="scene a2 a-${A} ${hexOk(vc) ? "tc" : "t" + (i % 5)}"${style}>
+    <span class="blob b1"></span><span class="blob b2"></span>
+    <span class="scn">${i + 1} / ${total}</span>
+    ${A === "portada" ? "" : `<p class="stitle">${esc(s.title)}</p>`}
+    <div class="dia">${body}<svg class="wires" aria-hidden="true"></svg></div>
+    <p class="cap"></p>
+    <span class="sprog"><i></i></span></div>` };
+}
+// Flechas entre dibujos: se calculan con las posiciones reales, así valen para móvil y ordenador.
+function vWires() {
+  const st = $("vstage"), svg = st?.querySelector(".wires"); if (!svg || !vp.wires) return;
+  const box = svg.parentElement.getBoundingClientRect(); if (!box.width) return;
+  svg.setAttribute("viewBox", `0 0 ${box.width} ${box.height}`);
+  const at = (k) => { const el = st.querySelector(`.dia [data-k="${k}"] .ie, .dia [data-k="${k}"]`); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2 - box.left, y: r.top + r.height / 2 - box.top, r: Math.max(r.width, r.height) / 2 + 6 }; };
+  svg.innerHTML = `<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>` +
+    vp.wires.map(([a, b, kind], j) => {
+      const p = at(a), q = at(b); if (!p || !q) return "";
+      const dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 1;
+      if (d < p.r + q.r + 6) return "";
+      const x1 = p.x + dx / d * p.r, y1 = p.y + dy / d * p.r, x2 = q.x - dx / d * q.r, y2 = q.y - dy / d * q.r;
+      const bend = st.querySelector(".a-ciclo") ? 0.25 : 0; // en el ciclo las flechas van curvas
+      const cx = (x1 + x2) / 2 - dy * bend, cy = (y1 + y2) / 2 + dx * bend;
+      const len = Math.hypot(x2 - x1, y2 - y1) * (bend ? 1.15 : 1);
+      const on = st.querySelector(`.dia [data-k="${b}"]`)?.classList.contains("on");
+      return `<path id="vw${j}" class="wire${on ? " on" : ""}" data-to="${b}" d="M${x1.toFixed(1)} ${y1.toFixed(1)} Q${cx.toFixed(1)} ${cy.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}" style="--len:${len.toFixed(0)}" marker-end="url(#ah)"/>` +
+        (kind === "flow" || st.querySelector(".a-proceso, .a-ciclo, .a-causa") ? `<circle class="spark${on ? " on" : ""}" data-to="${b}" r="4"><animateMotion dur="${(1.2 + len / 200).toFixed(2)}s" repeatCount="indefinite"><mpath href="#vw${j}"/></animateMotion></circle>` : "");
+    }).join("");
+}
+window.addEventListener("resize", () => { clearTimeout(vp.rz); vp.rz = setTimeout(vWires, 150); });
+// Prepara a qué palabra de la narración aparece cada dibujo y las frases para el subtítulo de dentro.
+function vCues(s) {
+  const st = $("vstage"); const narr = String(s.narration || "");
+  const nw = normW(narr), total = narr.split(/\s+/).filter(Boolean).length;
+  const els = [...st.querySelectorAll(".dia [data-cue]")];
+  let from = 0;
+  vp.cues = els.map((el, j) => {
+    let w = findCue(nw, el.dataset.cue, from);
+    if (w < 0) w = Math.round((j + 1) / (els.length + 1) * total * 0.85); else from = w;
+    if (el.dataset.k === "a") w = Math.max(w, Math.round(total * 0.55)); // la respuesta, nunca antes de plantear la pregunta
+    return { el, w };
+  });
+  vp.sents = []; let off = 0;
+  for (const p of narr.split(/(?<=[.!?…:;])\s+(?=\S)/).map(x => x.trim()).filter(Boolean)) { const k = p.split(/\s+/).length; vp.sents.push({ off, k, text: p }); off += k; }
+}
+function vReveal(k) {
+  const st = $("vstage"); if (!st) return;
+  const cap = st.querySelector(".cap");
+  if (cap && vp.playing && vp.sents) { const s = vp.sents.find(x => k + 1 >= x.off && k + 1 < x.off + x.k) || vp.sents[vp.sents.length - 1]; if (s && cap.textContent !== s.text) cap.textContent = s.text; }
+  if (!vp.cues) return;
+  let last = null;
+  for (const c of vp.cues) if (c.w <= k && !c.el.classList.contains("on")) { c.el.classList.add("on"); last = c.el; vOnShow(c.el); }
+  if (last && !last.classList.contains("ans")) { st.querySelectorAll(".dia .now").forEach(e => e.classList.remove("now")); last.classList.add("now"); st.querySelector(".dia")?.classList.add("focus"); }
+}
+function vOnShow(el) {
+  const st = $("vstage"), k = el.dataset.k;
+  st.querySelectorAll(`.wires [data-to="${k}"]`).forEach(w => w.classList.add("on"));
+  const tl = st.querySelector(".tlline i"); if (tl && el.classList.contains("tlp")) tl.style.width = el.style.left;
+  if (el.classList.contains("bar")) { // las cifras cuentan desde cero
+    const to = +el.dataset.v, b = el.querySelector(".bv"), t0 = performance.now(), dec = to % 1 ? 1 : 0;
+    const step = (t) => { const f = Math.min(1, (t - t0) / 900); if (b) b.textContent = (to * f).toFixed(dec).replace(".", ","); if (f < 1 && el.isConnected) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  }
+}
+
 function renderVideo(n) {
   const c = $("content");
   const b = isBusyWith(n, "video");
@@ -1418,15 +1577,20 @@ function vDraw(n, animate) {
   const sc = n.video.script, s = sc.scenes[vp.i];
   if (!$("vstage")) return;
   $("vbars").innerHTML = sc.scenes.map((_, k) => `<button class="${k < vp.i ? "done" : k === vp.i ? "now" : ""}" data-vs="${k}" aria-label="Ir a la escena ${k + 1}"></button>`).join("");
-  $("vstage").innerHTML = sceneHtml(s, vp.i, sc.scenes.length);
-  $("vstage").classList.toggle("anim", !!animate);
-  $("vstage").classList.toggle("still", !animate);
+  const r = s.anim ? sceneHtml2(s, vp.i, sc.scenes.length) : { html: sceneHtml(s, vp.i, sc.scenes.length), wires: [] };
+  const st = $("vstage");
+  st.innerHTML = r.html; vp.wires = r.wires; vp.cues = null;
+  st.classList.toggle("v2", !!s.anim);
+  st.classList.toggle("anim", !!animate);
+  st.classList.toggle("still", !animate);
+  if (s.anim) { vCues(s); if (!animate) st.querySelectorAll(".dia [data-cue]").forEach(e => e.classList.add("on")); }
+  requestAnimationFrame(vWires);
   const words = String(s.narration || "").split(/\s+/).filter(Boolean);
   $("vsubs").innerHTML = words.map((w, k) => `<span data-w="${k}">${esc(w)}</span>`).join(" ");
   $("vplay").textContent = vp.waiting ? "Siguiente escena ›" : vp.playing ? "Pausa" : (vp.ended ? "Ver otra vez" : "Reproducir");
   const nv = $("vnovoice"); if (nv) nv.hidden = canSpeak && !vp.mute;
 }
-const markSaid = (k) => document.querySelectorAll("#vsubs span").forEach((el, j) => el.classList.toggle("said", j <= k));
+function markSaid(k) { document.querySelectorAll("#vsubs span").forEach((el, j) => el.classList.toggle("said", j <= k)); vReveal(k); }
 function vPlayScene(n) {
   vClear(); rd.run++; rd.playing = false; vp.waiting = false;
   const sc = n.video.script, s = sc.scenes[vp.i];
@@ -1486,11 +1650,18 @@ function vPlayScene(n) {
       }
       markSaid(p.off + p.nw - 1); pi++; vp.timers.push(setTimeout(speakPart, 120));
     };
-    u.onstart = () => { started = everStarted = true; };
+    let heard = false; // si el navegador no dice por qué palabra va, se calcula por tiempo
+    u.onstart = () => {
+      started = everStarted = true;
+      vp.timers.push(setTimeout(() => {
+        if (heard || done || run !== vp.run) return;
+        for (let j = 0; j < p.nw; j++) vp.timers.push(setTimeout(() => { if (!heard && !done && run === vp.run) markSaid(p.off + j); }, j * 360 / speakRate));
+      }, 450));
+    };
     u.onend = () => next(false);
     u.onerror = () => { if (run !== vp.run) return; next(!started); };
     u.onboundary = (e) => {
-      started = everStarted = true;
+      started = everStarted = heard = true;
       if (run !== vp.run || (e.name && e.name !== "word")) return;
       const k = starts.findIndex((st, j) => e.charIndex >= st && (j === starts.length - 1 || e.charIndex < starts[j + 1]));
       if (k >= 0) markSaid(p.off + k);
@@ -1861,8 +2032,9 @@ async function runAI(n, what) {
       n.podcast = { text, at: Date.now() };
       audioSrc = "podcast"; rd.key = null;
     } else if (what === "video") {
-      const script = parseJSON(await generate(n, { prompt: VIDEO_PROMPT, schema: VIDEO_SCHEMA, system: TEACHER }), "el vídeo");
-      script.scenes = (script.scenes || []).filter(s => s.heading && s.narration);
+      const script = parseJSON(await generate(n, { prompt: VIDEO2_PROMPT, schema: VIDEO2_SCHEMA, system: TEACHER }), "el vídeo");
+      script.v = 2;
+      script.scenes = (script.scenes || []).filter(s => s.title && s.narration).map(s => ({ ...s, anim: ANIMS.includes(s.anim) ? s.anim : "proceso" }));
       if (!script.scenes.length) throw new AIError("Gemini no ha podido preparar un vídeo de este apunte. Vuelve a intentarlo.");
       n.video = { script, at: Date.now() };
       vStop(); vp.i = 0; vp.ended = false;

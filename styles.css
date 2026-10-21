@@ -208,7 +208,7 @@ label.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .scene .blob.b2 { width: 28%; aspect-ratio: 1; left: -8%; top: -12%; background: rgb(255 255 255 / .06); }
 .scene .scn { position: absolute; top: 10px; right: 14px; font-size: .75rem; letter-spacing: .08em; opacity: .8; font-variant-numeric: tabular-nums; }
 .scene .vicon { position: absolute; right: 5%; top: 50%; translate: 0 -50%; font-size: 3.2rem; line-height: 1; opacity: .95; filter: drop-shadow(0 6px 12px rgb(0 0 0 / .3)); }
-.scene .sbody { position: relative; display: grid; gap: 12px; padding-right: 22%; max-width: 100%; overflow-wrap: anywhere; }
+.scene .sbody { position: relative; display: grid; gap: 12px; padding-right: 22%; max-width: 100%; overflow-wrap: break-word; }
 .scene.l-pregunta .sbody, .scene.l-comparacion .sbody, .scene.l-dato .sbody { padding-right: 0; }
 .scene.l-pregunta .vicon, .scene.l-comparacion .vicon, .scene.l-dato .vicon { top: 12px; translate: none; right: auto; left: 22px; font-size: 1.6rem; }
 .scene.l-pregunta, .scene.l-comparacion, .scene.l-dato { padding-top: 48px; }
@@ -445,3 +445,110 @@ html.lbopen, html.lbopen body { overflow: hidden; }
 .sugreply { border-left: 4px solid var(--accent); padding-left: 8px; }
 #sugtext { width: 100%; }
 #sugbtn .badge { margin-left: 4px; }
+
+/* Vídeo animado: dibujos que aparecen y se mueven al ritmo de la voz */
+.stage.v2 { aspect-ratio: 16 / 9; }
+@media (max-width: 560px) { .stage.v2 { aspect-ratio: 1 / 1; } }
+.scene.a2 { grid-template-rows: auto 1fr auto; align-content: stretch; gap: 6px; padding: 30px 16px 14px; }
+.a2 .stitle { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; font-size: clamp(1rem, 4.4cqw, 1.8rem); line-height: 1.15; padding-right: 48px; }
+.a2 .dia { position: relative; min-height: 0; display: grid; place-items: center; }
+.a2 .wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; color: rgb(255 255 255 / .85); }
+.a2 .wire { fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: var(--len); stroke-dashoffset: var(--len); opacity: 0; }
+.a2 .wire.on { stroke-dashoffset: 0; opacity: 1; transition: stroke-dashoffset .9s ease, opacity .2s; }
+.a2 .spark { fill: #ffe45c; opacity: 0; filter: drop-shadow(0 0 4px #ffe45c); }
+.a2 .spark.on { opacity: 1; transition: opacity .4s .8s; }
+.a2 .cap { margin: 0; justify-self: center; text-align: center; font-size: .82rem; font-size: clamp(.78rem, 3.1cqw, 1.15rem); line-height: 1.3; background: rgb(0 0 0 / .32); padding: 4px 10px; border-radius: 8px; max-width: 100%; }
+.a2 .cap:empty { visibility: hidden; }
+.a2 .it { display: grid; justify-items: center; text-align: center; gap: 2px; opacity: 0; transform: scale(.4); position: relative; z-index: 1; }
+.a2 .it.on { opacity: 1; transform: none; transition: opacity .45s, transform .55s cubic-bezier(.3, 1.6, .5, 1); }
+.a2 .dia.focus .it.on:not(.now):not(.ans) { opacity: .62; }
+.a2 .ie { font-size: 2rem; font-size: clamp(1.6rem, 8.5cqw, 3.6rem); line-height: 1.1; display: inline-block; filter: drop-shadow(0 4px 8px rgb(0 0 0 / .3)); }
+.a2 .ie.big { font-size: 2.8rem; font-size: clamp(2.2rem, 12cqw, 5rem); }
+.a2 .ie.hugee { font-size: 3.4rem; font-size: clamp(2.8rem, 16cqw, 6.5rem); }
+.a2 .il { font-weight: 700; font-size: .78rem; font-size: clamp(.72rem, 3.2cqw, 1.2rem); line-height: 1.15; max-width: 10em; overflow-wrap: break-word; hyphens: auto; }
+.a2 .it2 { font-size: .68rem; font-size: clamp(.64rem, 2.6cqw, .98rem); opacity: .85; line-height: 1.15; max-width: 11em; }
+.a2 .it.now .ie { outline: 3px solid #ffe45c; outline-offset: 4px; border-radius: 50%; }
+.a2 .abs { position: absolute; translate: -50% -50%; width: max-content; max-width: 36%; }
+.a2 .ring { position: relative; width: 100%; height: 100%; min-height: 150px; }
+.a2 .core { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: grid; justify-items: center; z-index: 1; }
+.a2 .core .il { font-size: .82rem; font-size: clamp(.74rem, 3.2cqw, 1.2rem); background: rgb(0 0 0 / .25); padding: 2px 8px; border-radius: 99px; }
+.a-ciclo .orbitline { position: absolute; left: 50%; top: 50%; width: 76%; height: 76%; translate: -50% -50%; border: 2px dashed rgb(255 255 255 / .3); border-radius: 50%; }
+.a-ciclo .ring { aspect-ratio: 1; height: 100%; width: auto; max-width: 100%; margin: 0 auto; }
+.a-ciclo .ring .ie:not(.big) { font-size: clamp(1.4rem, 7cqw, 3rem); }
+.a2 .flow { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 18px 34px; width: 100%; }
+.a2 .flow.vert { flex-direction: column; gap: 22px; }
+.a2 .flow .step { max-width: 30%; }
+.a2 .flow.vert .step { max-width: none; grid-template-columns: auto auto; column-gap: 8px; align-items: center; }
+.a2 .flow.vert .step .it2 { grid-column: 2; }
+.a2 .tree { display: grid; gap: 28px; width: 100%; height: 100%; align-content: space-evenly; }
+.a2 .tree .rootw { position: relative; height: 4.5em; }
+.a2 .tree .core { top: 50%; }
+.a2 .kids { display: flex; justify-content: space-around; gap: 6px; }
+.a2 .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.a2 .chipit { grid-auto-flow: column; align-items: center; gap: 6px; background: rgb(255 255 255 / .14); border-radius: 99px; padding: 4px 12px 4px 8px; }
+.a2 .chipit .ie { font-size: 1.3rem; font-size: clamp(1.15rem, 5cqw, 2rem); }
+.a2 .hero { display: grid; justify-items: center; gap: 6px; text-align: center; }
+.a2 .hero h3 { font-size: 1.7rem; font-size: clamp(1.5rem, 8cqw, 3.2rem); }
+.a2 .defn { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; width: 100%; }
+.a2 .defn .term { margin: 0 0 8px; font-family: var(--font-display); font-weight: 700; font-size: 1.7rem; font-size: clamp(1.5rem, 8cqw, 3.4rem); line-height: 1.05; }
+.a2 .defn .chips { justify-content: flex-start; }
+@media (max-width: 560px) { .a2 .defn { grid-template-columns: 1fr; justify-items: center; text-align: center; } .a2 .defn .chips { justify-content: center; } }
+.a2 .cmp { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: start; width: 100%; }
+.a2 .cmpcol { display: grid; gap: 8px; justify-items: center; background: rgb(255 255 255 / .1); border-radius: 12px; padding: 8px 6px; }
+.a2 .cmpcol > b { font-family: var(--font-display); font-size: 1rem; font-size: clamp(.95rem, 4.4cqw, 1.7rem); }
+.a2 .cmpit { grid-auto-flow: column; gap: 6px; align-items: center; }
+.a2 .cmpit .ie { font-size: 1.4rem; font-size: clamp(1.2rem, 6cqw, 2.4rem); }
+.a2 .vs { align-self: center; font-family: var(--font-display); font-weight: 800; background: #ffe45c; color: #1d2a44; border-radius: 50%; width: 2.2em; height: 2.2em; display: grid; place-items: center; font-size: .8rem; }
+.a2 .tl { position: relative; width: 100%; height: 100%; min-height: 150px; }
+.a2 .tlline { position: absolute; left: 6%; right: 6%; top: 50%; height: 4px; background: rgb(255 255 255 / .2); border-radius: 2px; translate: 0 -50%; }
+.a2 .tlline i { display: block; height: 100%; width: 0; background: #ffe45c; border-radius: 2px; transition: width .9s; max-width: 100%; }
+.stage.still .a2 .tlline i { width: 100% !important; }
+.a2 .tlp { width: 24%; }
+.a2 .tlp .ie { font-size: clamp(1.2rem, 6cqw, 2.4rem); }
+.a2 .tlp::after { content: ""; position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: #ffe45c; translate: -50% -50%; }
+.a2 .tlp.up { translate: -50% calc(-100% - 12px); }
+.a2 .tlp.dn { translate: -50% 12px; }
+.a2 .tlp.up::after { top: calc(100% + 12px); }
+.a2 .tlp.dn::after { top: -12px; }
+.a2 .bars2 { display: flex; align-items: flex-end; justify-content: center; gap: 10px; width: 100%; height: 100%; min-height: 150px; padding-top: 10px; }
+.a2 .bar { flex: 1; max-width: 90px; height: 100%; grid-template-rows: auto 1fr auto auto; align-items: end; opacity: 1; transform: none; }
+.a2 .bar i { display: block; width: 70%; height: 0; background: linear-gradient(#ffe45c, #ffb347); border-radius: 6px 6px 0 0; transition: height 1s cubic-bezier(.3, 1.3, .5, 1); }
+.a2 .bar.on i { height: calc(var(--v) * 1%); }
+.a2 .bar .bv { font-family: var(--font-display); font-weight: 800; font-size: clamp(.9rem, 4cqw, 1.6rem); opacity: 0; }
+.a2 .bar.on .bv { opacity: 1; }
+.a2 .bar .ie { font-size: clamp(1rem, 5cqw, 2rem); }
+.a2 .quest { display: grid; justify-items: center; gap: 10px; text-align: center; }
+.a2 .quest .qq { margin: 0; }
+.a2 .clock { width: 42px; height: 42px; rotate: -90deg; }
+.a2 .clock circle { fill: none; stroke: rgb(255 255 255 / .25); stroke-width: 4; }
+.a2 .clock .hand { stroke: #ffe45c; stroke-dasharray: 101; stroke-dashoffset: 0; }
+.stage.anim .a2 .clock .hand { animation: clock 6s linear forwards .8s; }
+.a2 .ans { margin: 0; }
+.a2 .ans span { display: inline-block; background: #ffe45c; color: #1d2a44; font-weight: 700; padding: 6px 14px; border-radius: 99px; font-size: clamp(.95rem, 4.2cqw, 1.6rem); }
+.a2 .checks2 { display: grid; gap: 12px; justify-items: start; }
+.a2 .chk { grid-auto-flow: column; gap: 10px; align-items: center; justify-items: start; text-align: left; }
+.a2 .chk .il { max-width: none; font-size: clamp(.9rem, 4.2cqw, 1.6rem); }
+.a2 .chk::after { content: "✓"; color: #ffe45c; font-weight: 800; font-size: 1.3em; opacity: 0; }
+.a2 .chk.on::after { opacity: 1; transition: opacity .3s .5s; }
+.a2 .actor .ie { font-size: clamp(2rem, 11cqw, 4.6rem); }
+@keyframes clock { to { stroke-dashoffset: 101; } }
+@media (prefers-reduced-motion: no-preference) {
+  .a2 .it.on .act-entra { animation: entra .8s both; }
+  .a2 .it.on .act-crece, .stage.anim .a2 .hero .act-crece, .stage.anim .a2 .defn .act-crece { animation: crece 1.2s both; }
+  .a2 .it.on .act-late, .a2 .core .act-late { animation: late 1.4s ease-in-out infinite; }
+  .a2 .it.on .act-gira { animation: gira 4s linear infinite; }
+  .a2 .it.on .act-sube { animation: sube 2.2s ease-in-out infinite; }
+  .a2 .it.on .act-baja { animation: baja 2.2s ease-in-out infinite; }
+  .a2 .it.on .act-brilla { animation: brilla 1.8s ease-in-out infinite; }
+  .a2 .it.on .act-tiembla, .stage.anim .a2 .quest .act-tiembla { animation: tiembla .6s ease-in-out 3; }
+  .a2 .it.now .act-aparece { animation: late 1.6s ease-in-out infinite; }
+  .stage.anim .a-ciclo .orbitline { animation: gira 18s linear infinite; }
+}
+@keyframes entra { from { transform: translateX(-60px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes crece { 0% { transform: scale(.2); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+@keyframes late { 50% { transform: scale(1.14); } }
+@keyframes gira { to { rotate: 360deg; } }
+@keyframes sube { 50% { transform: translateY(-12px); } }
+@keyframes baja { 50% { transform: translateY(12px); } }
+@keyframes brilla { 50% { filter: drop-shadow(0 0 14px #ffe45c) brightness(1.2); transform: scale(1.08); } }
+@keyframes tiembla { 25% { transform: rotate(-10deg); } 75% { transform: rotate(10deg); } }

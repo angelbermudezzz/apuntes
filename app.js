@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2026-10-21b";
+const APP_VERSION = "2026-10-22a";
 
 // ---------- Almacenamiento (IndexedDB, con memoria como respaldo) ----------
 const mem = { subjects: [], notes: [] };
@@ -1370,12 +1370,12 @@ async function renderAudio(n) {
 // ---------- Vídeo-lección (escenas animadas + voz del dispositivo) ----------
 const vp = { id: null, i: 0, playing: false, ended: false, waiting: false, mute: false, timers: [], run: 0 };
 function vClear() { vp.u = null; vp.run++; vp.timers.forEach(clearTimeout); vp.timers = []; if (canSpeak) speechSynthesis.cancel(); }
-function vStop() { vClear(); vp.playing = false; vp.waiting = false; }
+function vStop() { vClear(); vp.playing = false; vp.waiting = false; musicStop(); }
 const LAYOUTS = ["portada", "lista", "definicion", "comparacion", "dato", "pregunta", "resumen"];
 // ---------- Vídeo animado: cada escena dibuja y anima lo que la voz va explicando ----------
 // Gemini elige el tipo de animación de cada escena y, para cada dibujo, la palabra de la narración
 // en la que debe aparecer («cue»). Al llegar la voz a esa palabra, el dibujo entra en escena.
-const ANIMS = ["portada", "proceso", "ciclo", "partes", "comparar", "linea", "jerarquia", "grafico", "causa", "escena", "definicion", "pregunta", "resumen"];
+const ANIMS = ["portada", "proceso", "ciclo", "partes", "comparar", "linea", "jerarquia", "grafico", "causa", "escena", "definicion", "pregunta", "resumen", "codigo", "lista", "dato"];
 const ACTIONS = ["aparece", "entra", "crece", "late", "gira", "sube", "baja", "brilla", "tiembla"];
 const VIDEO2_SCHEMA = {
   type: "OBJECT",
@@ -1386,8 +1386,9 @@ const VIDEO2_SCHEMA = {
       items: { type: "ARRAY", items: { type: "OBJECT", properties: {
         emoji: { type: "STRING" }, label: { type: "STRING" }, text: { type: "STRING" }, value: { type: "NUMBER" },
         side: { type: "STRING", enum: ["izquierda", "derecha"] }, action: { type: "STRING", enum: ACTIONS },
-        to: { type: "INTEGER" }, cue: { type: "STRING" }
+        to: { type: "INTEGER" }, line: { type: "INTEGER" }, cue: { type: "STRING" }
       }, required: ["label", "cue"] } },
+      subtitle: { type: "STRING" }, big: { type: "STRING" }, code: { type: "STRING" }, output: { type: "STRING" }, file: { type: "STRING" },
       left_title: { type: "STRING" }, right_title: { type: "STRING" },
       question: { type: "STRING" }, answer: { type: "STRING" }, narration: { type: "STRING" }
     }, required: ["anim", "title", "narration"] } }
@@ -1409,8 +1410,11 @@ Tipos de "anim" y qué poner en "items":
 - "escena": una pequeña escena con personajes u objetos (2 a 5) que actúan: "action" es lo que hace cada uno (aparece, entra, crece, late, gira, sube, baja, brilla, tiembla) y "to" (opcional) es el número del item, empezando en 0, hacia el que va una flecha con algo que viaja (energía, agua, información…). Ejemplo, fotosíntesis: ☀️ brilla to 1, 🌱 crece, 💧 sube to 1, 🫧 O₂ sube.
 - "definicion": "title" es el concepto y los items 2 o 3 rasgos clave (emoji + label corto).
 - "pregunta": "question" para que Erika piense y "answer" corta; items puede ir vacío.
+- "codigo": para PROGRAMACIÓN. "code" es un trozo de código corto y real (3 a 12 líneas, bien indentado, con saltos de línea), "file" el nombre del archivo (p. ej. Main.java), "output" lo que sale por pantalla al ejecutarlo (opcional) e "items" son notas (1 a 3) que explican líneas concretas: cada una con "line" (número de línea, empezando en 1), "label" corto y "cue". Si los apuntes son de programación, usa "codigo" en al menos la mitad de las escenas.
+- "lista": 2 a 4 ideas cortas en items, cada una con su emoji.
+- "dato": "big" es un número, fecha o dato muy corto (máx. 10 caracteres) y "subtitle" una frase que lo explique.
 - "resumen": la última. 3 items con lo que no puede olvidar.
-Usa al menos 5 tipos distintos y prefiere los más visuales (proceso, ciclo, partes, escena, comparar, linea). Elige el tipo que mejor dibuje lo que se explica.
+Usa al menos 5 tipos distintos y prefiere los más visuales (proceso, ciclo, partes, escena, comparar, linea, codigo). "subtitle" (opcional, máx. 12 palabras) es una frase corta bajo el título en portada, definicion y dato. Elige el tipo que mejor dibuje lo que se explica.
 Cada item: "emoji" (UN emoji concreto que dibuje la cosa), "label" (máx. 4 palabras), "text" opcional (máx. 8 palabras) y "cue": UNA palabra que aparezca TAL CUAL en la narración, en el momento en que se habla de ese item. Los items van en el mismo orden en que se nombran.
 "narration": lo que dice el profesor en voz alta, 2 a 4 frases naturales y cercanas, como si se lo explicaras a una amiga, nombrando los items en orden. En las preguntas plantea la pregunta, di «piénsalo un momento» y luego da la respuesta. Sin emojis, símbolos ni Markdown en la narración. No inventes datos que no estén en los apuntes.`;
 
@@ -1419,48 +1423,108 @@ const normW = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[̀
 // Palabra de la narración en la que aparece un dibujo (o -1 si no se encuentra).
 function findCue(nwords, cue, from) {
   const c = normW(cue); if (!c.length) return -1;
+  const whole = findCue1(nwords, c, from); if (whole >= 0) return whole;
+  // si la frase entera no está, vale la primera palabra con sentido que sí aparezca
+  for (const w of c.filter(w => w.length >= 4)) { const i = findCue1(nwords, [w], from); if (i >= 0) return i; }
+  return -1;
+}
+function findCue1(nwords, c, from) {
   const at = (s) => { for (let i = s; i < nwords.length; i++) if (c.every((w, j) => (nwords[i + j] || "").startsWith(w.slice(0, Math.max(4, w.length - 2))))) return i; return -1; };
   const i = at(from); return i >= 0 ? i : at(0);
 }
+// Resaltado sencillo de código (Java, JavaScript, Python, C…): comentarios, textos, números, palabras clave y tipos.
+const CODE_KW = new Set("abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for if implements import instanceof int interface long native new package private protected public return short static super switch this throw throws try void volatile while var let function async await yield def elif lambda None True False and or not in is pass print from as with null true false undefined struct include using namespace".split(" "));
+function hlCode(src) {
+  const re = /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')|(\b\d+(?:\.\d+)?\b)|([A-Za-z_]\w*)|([^\w\s])|(\s+)/g;
+  let out = "", m;
+  while ((m = re.exec(src))) {
+    const [t, com, str, num, id, sym] = m;
+    if (com) out += `<span class="c-com">${esc(com)}</span>`;
+    else if (str) out += `<span class="c-str">${esc(str)}</span>`;
+    else if (num) out += `<span class="c-num">${num}</span>`;
+    else if (id) out += CODE_KW.has(id) ? `<span class="c-kw">${id}</span>` : /^[A-Z]/.test(id) ? `<span class="c-ty">${id}</span>` : src[re.lastIndex] === "(" ? `<span class="c-fn">${id}</span>` : esc(id);
+    else out += esc(t);
+  }
+  return out;
+}
+const looksCode = (t) => /[;{}]|\w\(.*\)|\bnew \w|=\s*\S|^\s*(public|private|int|double|String|for|while|if|def|print|import|return|System)\b/m.test(String(t || ""));
+// Los vídeos hechos con la versión anterior se pasan al formato animado sin gastar Gemini.
+function fromV1(s) {
+  let pts = (s.points || []).map(String).filter(Boolean);
+  // Escenas antiguas sin puntos: se dibujan las frases de la narración
+  if (!pts.length && /lista|resumen|^$/.test(s.layout || "")) pts = String(s.narration || "").split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ¿¡])/).map(x => x.trim().replace(/[.]$/, "")).filter(Boolean).slice(0, 4);
+  const b = { title: s.heading || s.term || "", emoji: s.icon, narration: s.narration || "" };
+  const its = (arr, side) => (arr || []).filter(Boolean).map(p => ({ label: String(p), cue: String(p), side }));
+  switch (s.layout) {
+    case "portada": return { ...b, anim: "portada", subtitle: pts[0] };
+    case "definicion": {
+      const t = String(s.term || ""), def = s.definition || pts.join(" ");
+      if (looksCode(t)) return { ...b, anim: "codigo", code: t.replace(/;\s*(?=\S)/g, ";\n"), items: def ? [{ label: def, cue: def }] : [] };
+      return { ...b, anim: "definicion", title: t || b.title, subtitle: def };
+    }
+    case "comparacion": return { ...b, anim: "comparar", left_title: s.left_title, right_title: s.right_title, items: [...its(s.left_points, "izquierda"), ...its(s.right_points, "derecha")] };
+    case "dato": return { ...b, anim: "dato", big: s.big || pts[0] || "", subtitle: s.big ? pts[0] : pts[1] };
+    case "pregunta": return { ...b, anim: "pregunta", question: s.question || pts[0], answer: s.answer || pts[1] };
+    case "resumen": return { ...b, anim: "resumen", items: its(pts) };
+    default: return { ...b, anim: "lista", items: its(pts) };
+  }
+}
+const VSTYLES = { blanca: "Pizarra blanca", tiza: "Pizarra de tiza", color: "Colores" };
+const vStyle = () => VSTYLES[ls.get("video-estilo")] ? ls.get("video-estilo") : "blanca";
+const PEN_SVG = `<svg viewBox="0 0 64 64" aria-hidden="true"><g transform="rotate(35 32 32)"><rect x="25" y="2" width="14" height="42" rx="3" fill="var(--pen-body)"/><rect x="25" y="8" width="14" height="6" fill="var(--pen-band)"/><path d="M25 44h14l-7 14z" fill="#f2d4a6"/><path d="M29.6 53h4.8L32 58z" fill="var(--pen-ink)"/></g></svg>`;
 function sceneHtml2(s, i, total) {
-  const A = ANIMS.includes(s.anim) ? s.anim : "proceso";
-  let items = (s.items || []).filter(x => x && (x.label || x.emoji)).slice(0, 7);
+  if (!s.anim) s = fromV1(s);
+  const A = ANIMS.includes(s.anim) ? s.anim : "lista";
+  const items = (s.items || []).filter(x => x && (x.label || x.emoji)).slice(0, 7);
+  const n = items.length;
   const words = (t) => esc(t).split(" ").map((w, k) => `<span class="w" style="--d:${k}">${w}</span>`).join(" ");
-  const it = (x, k, cls = "", style = "") => `<div class="it ${cls}" data-k="${k}" data-cue="${esc(x.cue || x.label)}"${style ? ` style="${style}"` : ""}>
-      ${x.emoji ? `<span class="ie act-${ACTIONS.includes(x.action) ? x.action : "aparece"}">${emo(x.emoji)}</span>` : ""}<span class="il">${esc(x.label || "")}</span>${x.text ? `<span class="it2">${esc(x.text)}</span>` : ""}</div>`;
+  const ico = (x, k, cls = "") => x.emoji ? `<span class="ie ${cls} act-${ACTIONS.includes(x.action) ? x.action : "aparece"}">${emo(x.emoji)}</span>` : `<span class="ie num ${cls}">${k + 1}</span>`;
+  const it = (x, k, cls = "", style = "") => `<div class="it ${cls}" data-k="${k}" data-cue="${esc(x.cue || x.label)}"${x.line ? ` data-line="${+x.line}"` : ""}${style ? ` style="${style}"` : ""}>
+      ${ico(x, k)}<span class="il">${esc(x.label || "")}</span>${x.text ? `<span class="it2">${esc(x.text)}</span>` : ""}</div>`;
   const pos = (x, y) => `left:${x.toFixed(1)}%;top:${y.toFixed(1)}%`;
   const core = (label) => `<div class="core" data-k="c"><span class="ie big act-late">${emo(s.emoji || "⭐")}</span>${label ? `<span class="il">${esc(label)}</span>` : ""}</div>`;
+  const sub = s.subtitle ? `<p class="subt rev">${esc(s.subtitle)}</p>` : "";
   let body = "", wires = [];
-  const n = items.length;
-  if (A === "portada") body = `<div class="hero"><span class="ie hugee act-crece">${emo(s.emoji || "📘")}</span><h3 class="big">${words(s.title)}</h3></div><div class="chips">${items.map((x, k) => it(x, k, "chipit")).join("")}</div>`;
+  if (A === "portada") body = `<div class="hero"><span class="ie hugee act-crece">${emo(s.emoji || "📘")}</span><h3 class="big">${words(s.title)}</h3>${sub}<div class="chips">${items.map((x, k) => it(x, k, "chipit")).join("")}</div></div>`;
   else if (A === "proceso" || A === "causa") { body = `<div class="flow ${A === "causa" ? "vert" : ""}">${items.map((x, k) => it(x, k, "step")).join("")}</div>`; wires = items.slice(1).map((_, k) => [k, k + 1]); }
   else if (A === "ciclo") { body = `<div class="ring">${core("")}<span class="orbitline"></span>${items.map((x, k) => { const a = -Math.PI / 2 + 2 * Math.PI * k / n; return it(x, k, "abs", pos(50 + 38 * Math.cos(a), 50 + 38 * Math.sin(a))); }).join("")}</div>`; wires = items.map((_, k) => [k, (k + 1) % n]); }
   else if (A === "partes") { body = `<div class="ring">${core("")}${items.map((x, k) => { const a = -Math.PI / 2 + Math.PI / n + 2 * Math.PI * k / n; return it(x, k, "abs", pos(50 + 39 * Math.cos(a), 50 + 37 * Math.sin(a))); }).join("")}</div>`; wires = items.map((_, k) => ["c", k]); }
   else if (A === "jerarquia") { body = `<div class="tree"><div class="rootw">${core(s.title)}</div><div class="kids">${items.map((x, k) => it(x, k, "kid")).join("")}</div></div>`; wires = items.map((_, k) => ["c", k]); }
   else if (A === "escena") {
-    body = `<div class="ring">${items.map((x, k) => it(x, k, "abs actor", pos(12 + 76 * (k + 0.5) / n, n <= 3 ? 50 : (k % 2 ? 66 : 32)))).join("")}</div>`;
+    body = `<div class="ring">${items.map((x, k) => it(x, k, "abs actor", pos(12 + 76 * (k + 0.5) / n, n <= 3 ? 50 : (k % 2 ? 70 : 28)))).join("")}</div>`;
     wires = items.map((x, k) => Number.isInteger(x.to) && x.to !== k && x.to >= 0 && x.to < n ? [k, x.to, "flow"] : null).filter(Boolean);
   } else if (A === "comparar") {
     const L = items.filter(x => x.side !== "derecha"), R = items.filter(x => x.side === "derecha");
     const col = (arr, t, cls) => `<div class="cmpcol ${cls}"><b>${esc(t || "")}</b>${arr.map(x => it(x, items.indexOf(x), "cmpit")).join("")}</div>`;
-    body = `<div class="cmp">${col(L, s.left_title, "l")}<span class="vs">VS</span>${col(R, s.right_title, "r")}</div>`;
+    body = `<div class="cmp">${col(L, s.left_title, "l")}<span class="vs">vs</span>${col(R, s.right_title, "r")}</div>`;
   } else if (A === "linea") body = `<div class="tl"><div class="tlline"><i></i></div>${items.map((x, k) => it(x, k, "abs tlp " + (k % 2 ? "dn" : "up"), `left:${(13 + 74 * (n === 1 ? 0.5 : k / (n - 1))).toFixed(1)}%;top:50%`)).join("")}</div>`;
   else if (A === "grafico") {
     const max = Math.max(...items.map(x => Math.abs(+x.value || 0)), 1);
     body = `<div class="bars2">${items.map((x, k) => `<div class="it bar" data-k="${k}" data-cue="${esc(x.cue || x.label)}" data-v="${+x.value || 0}" style="--v:${Math.max(4, 100 * Math.abs(+x.value || 0) / max).toFixed(1)}">
       <span class="bv">${esc(String(+x.value || 0).replace(".", ","))}</span><i></i>${x.emoji ? `<span class="ie">${emo(x.emoji)}</span>` : ""}<span class="il">${esc(x.label || "")}</span></div>`).join("")}</div>`;
-  } else if (A === "definicion") body = `<div class="defn"><span class="ie hugee act-crece">${emo(s.emoji || "📖")}</span><div><p class="term">${words(s.title)}</p><div class="chips">${items.map((x, k) => it(x, k, "chipit")).join("")}</div></div></div>`;
+  } else if (A === "definicion") body = `<div class="defn"><span class="ie hugee act-crece">${emo(s.emoji || "📖")}</span><div><p class="term">${words(s.title)}</p>${sub}<div class="chips">${items.map((x, k) => it(x, k, "chipit")).join("")}</div></div></div>`;
   else if (A === "pregunta") body = `<div class="quest"><span class="ie hugee act-tiembla">${emo(s.emoji || "🤔")}</span><p class="qq">${esc(s.question || s.title)}</p>
       <svg class="clock" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16"/><circle class="hand" cx="20" cy="20" r="16"/></svg>
       ${s.answer ? `<p class="ans it" data-k="a" data-cue="${esc(s.answer)}"><span>${esc(s.answer)}</span></p>` : ""}</div>`;
-  else body = `<div class="checks2">${items.map((x, k) => it(x, k, "chk")).join("")}</div>`;
-  const vc = partColors().video;
-  const style = hexOk(vc) ? ` style="--v1:${mix(vc, "#000000", 0.55)};--v2:${vc}"` : "";
-  return { wires, html: `<div class="scene a2 a-${A} ${hexOk(vc) ? "tc" : "t" + (i % 5)}"${style}>
+  else if (A === "dato") body = `<div class="dato"><span class="ie hugee act-crece">${emo(s.emoji || "📌")}</span><p class="huge2" data-big="${esc(s.big || "")}">${esc(s.big || "")}</p>${sub}<div class="chips">${items.map((x, k) => it(x, k, "chipit")).join("")}</div></div>`;
+  else if (A === "codigo") {
+    const lines = String(s.code || "").replace(/\t/g, "  ").split("\n").slice(0, 16);
+    const fname = s.file || (/class\s+(\w+)/.exec(s.code || "")?.[1] ? /class\s+(\w+)/.exec(s.code)[1] + ".java" : /def |print\(/.test(s.code || "") ? "main.py" : "Main.java");
+    body = `<div class="codewrap ${n ? "withnotes" : ""}"><div class="ide"><div class="idebar"><i></i><i></i><i></i><span>${esc(fname)}</span></div>
+      <pre class="code"><code>${lines.map((l, k) => `<span class="ln" data-line="${k + 1}"><span class="lnno">${k + 1}</span>${hlCode(l) || " "}</span>`).join("")}</code></pre>
+      ${s.output ? `<div class="out it" data-k="o" data-cue="${esc(s.output_cue || "")}"><span class="outt">Salida</span><pre>${esc(s.output)}</pre></div>` : ""}</div>
+      ${n ? `<div class="notes">${items.map((x, k) => it(x, k, "note")).join("")}</div>` : ""}</div>`;
+  }
+  else if (A === "resumen") body = `<div class="checks2">${items.map((x, k) => it(x, k, "chk")).join("")}</div>`;
+  else body = `<div class="checks2 lista">${items.map((x, k) => it(x, k, "chk")).join("")}</div>`;
+  const vst = vStyle(), vc = partColors().video;
+  const style = vst === "color" && hexOk(vc) ? ` style="--v1:${mix(vc, "#000000", 0.55)};--v2:${vc}"` : "";
+  return { wires, s, html: `<div class="scene a2 a-${A} vs-${vst} ${vst === "color" ? "" : "board"} ${vst === "color" ? (hexOk(vc) ? "tc" : "t" + (i % 5)) : ""}"${style}>
     <span class="blob b1"></span><span class="blob b2"></span>
     <span class="scn">${i + 1} / ${total}</span>
-    ${A === "portada" ? "" : `<p class="stitle">${esc(s.title)}</p>`}
-    <div class="dia">${body}<svg class="wires" aria-hidden="true"></svg></div>
+    ${A === "portada" ? "" : `<p class="stitle"><span>${esc(s.title)}</span></p>`}
+    <div class="dia">${body}<svg class="wires" aria-hidden="true"></svg><svg class="scrib" aria-hidden="true"><path/></svg></div>
+    <span class="pen" aria-hidden="true">${PEN_SVG}</span>
     <p class="cap"></p>
     <span class="sprog"><i></i></span></div>` };
 }
@@ -1469,8 +1533,9 @@ function vWires() {
   const st = $("vstage"), svg = st?.querySelector(".wires"); if (!svg || !vp.wires) return;
   const box = svg.parentElement.getBoundingClientRect(); if (!box.width) return;
   svg.setAttribute("viewBox", `0 0 ${box.width} ${box.height}`);
-  const at = (k) => { const el = st.querySelector(`.dia [data-k="${k}"] .ie, .dia [data-k="${k}"]`); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2 - box.left, y: r.top + r.height / 2 - box.top, r: Math.max(r.width, r.height) / 2 + 6 }; };
-  svg.innerHTML = `<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>` +
+  const flowIe = !!st.querySelector(".a-proceso, .a-causa"); // en los pasos en columna la flecha va de dibujo a dibujo
+  const at = (k) => { const el = (flowIe && st.querySelector(`.dia [data-k="${k}"] .ie`)) || st.querySelector(`.dia [data-k="${k}"]`); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2 - box.left, y: r.top + r.height / 2 - box.top, r: Math.max(r.width, r.height) / 2 + 6 }; };
+  svg.innerHTML = `<defs><filter id="rough" filterUnits="userSpaceOnUse" x="0" y="0" width="${box.width}" height="${box.height}"><feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="3"/><feDisplacementMap in="SourceGraphic" scale="3"/></filter><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>` +
     vp.wires.map(([a, b, kind], j) => {
       const p = at(a), q = at(b); if (!p || !q) return "";
       const dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 1;
@@ -1508,9 +1573,31 @@ function vReveal(k) {
   let last = null;
   for (const c of vp.cues) if (c.w <= k && !c.el.classList.contains("on")) { c.el.classList.add("on"); last = c.el; vOnShow(c.el); }
   if (last && !last.classList.contains("ans")) { st.querySelectorAll(".dia .now").forEach(e => e.classList.remove("now")); last.classList.add("now"); st.querySelector(".dia")?.classList.add("focus"); }
+  if (last) vMark(last);
+}
+// El rotulador va hasta lo que se acaba de dibujar y lo rodea con un círculo a mano.
+function vPen(el) {
+  const st = $("vstage"), sc = st?.querySelector(".scene"), pen = sc?.querySelector(".pen"); if (!pen || !el) return;
+  const a = sc.getBoundingClientRect(), r = (el.querySelector(".il") || el.querySelector(".ie") || el).getBoundingClientRect();
+  pen.style.left = (r.right - a.left - 6) + "px"; pen.style.top = (r.bottom - a.top - 40) + "px"; pen.classList.add("on");
+  pen.classList.remove("wr"); void pen.offsetWidth; pen.classList.add("wr");
+}
+function vMark(el) {
+  vPen(el);
+  const st = $("vstage"), dia = st?.querySelector(".dia"), svg = dia?.querySelector(".scrib"); if (!svg || el.classList.contains("bar")) return;
+  const a = dia.getBoundingClientRect(), r = (el.querySelector(".ie:not(.num)") || el).getBoundingClientRect();
+  if (!a.width || !r.width) return;
+  svg.setAttribute("viewBox", `0 0 ${a.width} ${a.height}`);
+  const cx = r.left + r.width / 2 - a.left, cy = r.top + r.height / 2 - a.top, rx = r.width / 2 + 10, ry = r.height / 2 + 8;
+  let d = "", seed = (el.dataset.k || "0").charCodeAt(0);
+  const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280 - 0.5) * 6;
+  for (let t = 0; t <= 26; t++) { const ang = -2.2 + t / 24 * Math.PI * 2.15; d += (t ? "L" : "M") + (cx + Math.cos(ang) * (rx + rnd())).toFixed(1) + " " + (cy + Math.sin(ang) * (ry + rnd())).toFixed(1); }
+  const p = svg.querySelector("path"); p.setAttribute("d", d);
+  p.classList.remove("on"); void p.getBBox?.(); requestAnimationFrame(() => p.classList.add("on"));
 }
 function vOnShow(el) {
   const st = $("vstage"), k = el.dataset.k;
+  if (el.dataset.line) { st.querySelectorAll(".ln.hl").forEach(x => x.classList.remove("hl")); st.querySelector(`.ln[data-line="${el.dataset.line}"]`)?.classList.add("hl"); }
   st.querySelectorAll(`.wires [data-to="${k}"]`).forEach(w => w.classList.add("on"));
   const tl = st.querySelector(".tlline i"); if (tl && el.classList.contains("tlp")) tl.style.width = el.style.left;
   if (el.classList.contains("bar")) { // las cifras cuentan desde cero
@@ -1520,6 +1607,35 @@ function vOnShow(el) {
   }
 }
 
+// Música suave de fondo hecha en el propio móvil (acordes tranquilos, sin descargar nada).
+const music = { ctx: null, on: false, timer: null, master: null };
+function musicStart() {
+  if (ls.get("video-musica") !== "1" || music.on) return;
+  try { music.ctx = music.ctx || new (window.AudioContext || window.webkitAudioContext)(); music.ctx.resume?.(); } catch (e) { return; }
+  const ctx = music.ctx; music.on = true;
+  const master = ctx.createGain(); master.gain.setValueAtTime(0, ctx.currentTime); master.gain.linearRampToValueAtTime(0.045, ctx.currentTime + 2);
+  const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1100; lp.connect(master); master.connect(ctx.destination);
+  music.master = master;
+  const chords = [[57, 60, 64, 69], [53, 57, 60, 65], [48, 52, 55, 60], [55, 59, 62, 67]];
+  let k = 0;
+  const play = () => {
+    if (!music.on || music.master !== master) return;
+    const t = ctx.currentTime;
+    chords[k++ % chords.length].forEach((m, j) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = j ? "sine" : "triangle"; o.frequency.value = 440 * 2 ** ((m - 69) / 12);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.22, t + 1); g.gain.linearRampToValueAtTime(0, t + 4.2);
+      o.connect(g); g.connect(lp); o.start(t); o.stop(t + 4.3);
+    });
+    music.timer = setTimeout(play, 3900);
+  };
+  play();
+}
+function musicStop() {
+  music.on = false; clearTimeout(music.timer);
+  const m = music.master; music.master = null;
+  if (m) try { m.gain.cancelScheduledValues(music.ctx.currentTime); m.gain.setValueAtTime(m.gain.value, music.ctx.currentTime); m.gain.linearRampToValueAtTime(0, music.ctx.currentTime + 0.6); setTimeout(() => m.disconnect(), 800); } catch (e) {}
+}
 function renderVideo(n) {
   const c = $("content");
   const b = isBusyWith(n, "video");
@@ -1529,6 +1645,7 @@ function renderVideo(n) {
   c.innerHTML = `<div class="stack">
     <div class="actions"><button class="${sc ? "" : "primary"}" id="govideo" ${busy ? "disabled" : ""}>${sc ? "Hacer otro vídeo" : "Hacer vídeo"}</button>
       ${sc ? `<span class="note">${esc(sc.title || "")} · ${sc.scenes.length} escenas · unos ${Math.max(1, Math.round(sc.scenes.reduce((k, s) => k + String(s.narration || "").split(/\s+/).length, 0) / 150 / speakRate))} min</span>` : ""}</div>
+    ${sc && sc.v !== 2 && !n.example ? `<p class="note vold">Este vídeo se hizo con la versión anterior y se ha adaptado solo. Para que salga con animaciones y dibujos nuevos, pulsa «Hacer otro vídeo».</p>` : ""}
     ${errHtml(n, "video")}
     ${b ? busyHtml("Gemini está escribiendo el guion del vídeo…") : ""}
     ${sc ? `<div class="player" id="player">
@@ -1536,7 +1653,9 @@ function renderVideo(n) {
         <div class="bars" id="vbars"></div>
         <div class="actions vctl"><button id="vprev" aria-label="Escena anterior">‹</button><button class="primary big" id="vplay">Reproducir</button><button id="vnext" aria-label="Escena siguiente">›</button>
           ${rateSelect("vrate")}<button class="small ghost" id="vfull">Pantalla completa</button></div>
+        <div class="actions vstyle"><span class="note">Estilo:</span>${Object.entries(VSTYLES).map(([k, v]) => `<button class="tab small" data-vstyle="${k}" aria-pressed="${vStyle() === k}">${v}</button>`).join("")}</div>
         <label class="vauto"><input type="checkbox" id="vauto" ${auto ? "checked" : ""}> Pasar de escena sola al terminar de hablar</label>
+        <label class="vauto"><input type="checkbox" id="vmusic" ${ls.get("video-musica") === "1" ? "checked" : ""}> Música suave de fondo</label>
         <p class="note" id="vnovoice" ${canSpeak && !vp.mute ? "hidden" : ""}>Sin voz en este navegador: el vídeo va con subtítulos.</p>
         <div class="subs" id="vsubs" aria-live="polite"></div>
       </div>`
@@ -1577,13 +1696,14 @@ function vDraw(n, animate) {
   const sc = n.video.script, s = sc.scenes[vp.i];
   if (!$("vstage")) return;
   $("vbars").innerHTML = sc.scenes.map((_, k) => `<button class="${k < vp.i ? "done" : k === vp.i ? "now" : ""}" data-vs="${k}" aria-label="Ir a la escena ${k + 1}"></button>`).join("");
-  const r = s.anim ? sceneHtml2(s, vp.i, sc.scenes.length) : { html: sceneHtml(s, vp.i, sc.scenes.length), wires: [] };
+  const r = sceneHtml2(s, vp.i, sc.scenes.length);
   const st = $("vstage");
   st.innerHTML = r.html; vp.wires = r.wires; vp.cues = null;
-  st.classList.toggle("v2", !!s.anim);
+  st.classList.toggle("v2", true);
   st.classList.toggle("anim", !!animate);
   st.classList.toggle("still", !animate);
-  if (s.anim) { vCues(s); if (!animate) st.querySelectorAll(".dia [data-cue]").forEach(e => e.classList.add("on")); }
+  vCues(s);
+  if (!animate) { st.querySelectorAll(".dia [data-cue], .ln").forEach(e => e.classList.add("on")); st.querySelectorAll(".ln").forEach(e => e.classList.add("typed")); }
   requestAnimationFrame(vWires);
   const words = String(s.narration || "").split(/\s+/).filter(Boolean);
   $("vsubs").innerHTML = words.map((w, k) => `<span data-w="${k}">${esc(w)}</span>`).join(" ");
@@ -1596,6 +1716,12 @@ function vPlayScene(n) {
   const sc = n.video.script, s = sc.scenes[vp.i];
   const narr = String(s.narration || "").trim();
   vDraw(n, true);
+  // El código se escribe línea a línea al principio de la escena, con el rotulador siguiendo cada línea.
+  const lns = [...document.querySelectorAll("#vstage .ln")];
+  if (lns.length) { const per = Math.min(650, Math.max(220, 3200 / lns.length)); lns.forEach((l, k) => vp.timers.push(setTimeout(() => { l.classList.add("on", "typed"); vPen(l); }, 500 + k * per))); }
+  const big = document.querySelector("#vstage .huge2"); const num = /^(\d+)([.,]\d+)?/.exec(big?.dataset.big || "");
+  if (big && num) { const to = parseFloat(num[0].replace(",", ".")), rest = big.dataset.big.slice(num[0].length), dec = num[2] ? num[2].length - 1 : 0, t0 = performance.now();
+    const step = (t) => { const f = Math.min(1, (t - t0 - 400) / 1200); if (f > 0) big.textContent = (to * f).toFixed(dec).replace(".", ",") + rest; if (f < 1 && big.isConnected) requestAnimationFrame(step); }; requestAnimationFrame(step); }
   const run = vp.run, t0 = Date.now();
   const words = narr.split(/\s+/).filter(Boolean);
   const est = Math.max(4000, words.length * 400 / speakRate); // lo que tarda en decirse más o menos
@@ -1614,7 +1740,7 @@ function vPlayScene(n) {
     vp.timers.push(setTimeout(() => {
       if (run !== vp.run || !vp.playing) return;
       stage.querySelectorAll("li, .rev, .ans").forEach(el => el.classList.add("on")); markSaid(words.length);
-      if (vp.i >= sc.scenes.length - 1) { vp.playing = false; vp.ended = true; vDraw(n, false); return; }
+      if (vp.i >= sc.scenes.length - 1) { vp.playing = false; vp.ended = true; musicStop(); vDraw(n, false); return; }
       if (ls.get("video-auto") === "0") { vp.waiting = true; $("vplay").textContent = "Siguiente escena ›"; return; }
       vp.timers.push(setTimeout(() => { if (run === vp.run && vp.playing) { vp.i++; vPlayScene(n); } }, 1300));
     }, wait));
@@ -1675,6 +1801,7 @@ function vPlayScene(n) {
 function vToggle(n) {
   // Se habla algo dentro del toque para que el iPhone deje usar la voz después.
   if (canSpeak && !vp.playing) { vp.mute = false; try { speechSynthesis.cancel(); vp.u = new SpeechSynthesisUtterance(" "); vp.u.volume = 0; speechSynthesis.speak(vp.u); } catch (e) {} }
+  if (!vp.playing || vp.waiting) musicStart();
   if (vp.waiting) { vp.waiting = false; vp.i = Math.min(vp.i + 1, n.video.script.scenes.length - 1); vp.playing = true; vPlayScene(n); return; }
   if (vp.playing) { vStop(); vDraw(n, false); }
   else { if (vp.ended) vp.i = 0; vp.playing = true; vp.ended = false; vPlayScene(n); }
@@ -2406,6 +2533,7 @@ document.addEventListener("click", async (e) => {
   if (e.target.id === "cpick") { if (cpDownOnBackdrop) closeColorPicker(); return; }
   const t = e.target.closest("button"); if (!t) return;
   const n = notes.find(x => x.id === openId);
+  if (t.dataset.vstyle && n?.video) { ls.set("video-estilo", t.dataset.vstyle); document.querySelectorAll("[data-vstyle]").forEach(b => b.setAttribute("aria-pressed", b === t)); if (vp.playing) vPlayScene(n); else vDraw(n, false); return; }
   if (t.dataset.cpick) { openColorPicker(t.dataset.cpick); return; }
   if (t.dataset.cpv) { cpSet(t.dataset.cpv); return; }
   if (t.id === "cpok") { closeColorPicker(); return; }
@@ -2596,6 +2724,7 @@ document.addEventListener("change", (e) => {
   if (e.target.id === "bgphoto" && e.target.files[0]) { setBgPhoto(e.target.files[0]); e.target.value = ""; }
   const n = notes.find(x => x.id === openId);
   if (e.target.id === "rate") { setRate(+e.target.value); if (rd.playing) rdPlay(); }
+  if (e.target.id === "vmusic") { ls.set("video-musica", e.target.checked ? "1" : "0"); if (!e.target.checked) musicStop(); else if (vp.playing) musicStart(); return; }
   if (e.target.id === "vauto") { ls.set("video-auto", e.target.checked ? "1" : "0"); return; }
   if (e.target.id === "vrate") { setRate(+e.target.value); if (vp.playing && !vp.waiting && n?.video) vPlayScene(n); }
   if (e.target.id === "prefrate") setRate(+e.target.value);
